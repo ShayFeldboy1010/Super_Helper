@@ -4,15 +4,5 @@
             "source": "/(.*)",
             "destination": "/api/index.py"
         }
-    ],
-    "crons": [
-        {
-            "path": "/api/cron/check-reminders",
-            "schedule": "*/30 * * * *"
-        },
-        {
-            "path": "/api/cron/daily-brief",
-            "schedule": "0 8 * * *"
-        }
     ]
 }
