@@ -24,7 +24,7 @@ dp.include_router(tasks.router)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Set Webhook
-    webhook_url = "https://e4b9-80-230-81-108.ngrok-free.app/webhook"
+    webhook_url = settings.WEBHOOK_URL
     try:
         print(f"Setting webhook to {webhook_url}...")
         import asyncio

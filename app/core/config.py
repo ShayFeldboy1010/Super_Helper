@@ -9,11 +9,12 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str
     SECRET_KEY: str
     M_WEBHOOK_SECRET: str
+    WEBHOOK_URL: str = "https://super-helper-theta.vercel.app/webhook"
     
     # Google Auth
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str = "https://e4b9-80-230-81-108.ngrok-free.app/auth/callback" 
+    GOOGLE_REDIRECT_URI: str = "https://super-helper-theta.vercel.app/auth/callback" 
     
     # Defaults
     API_V1_STR: str = "/api/v1"
