@@ -63,7 +63,7 @@ class QueryService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Context:\n{full_context}\n\nQuestion: {query_text}"}
                 ],
-                model="llama3-8b-8192", # Fast and good enough for synthesis
+                model="moonshotai/kimi-k2-instruct-0905",
                 temperature=0.7,
             )
             return chat_completion.choices[0].message.content
