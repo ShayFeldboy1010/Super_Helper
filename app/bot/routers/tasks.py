@@ -13,14 +13,11 @@ router = Router()
 
 
 async def safe_edit(status_msg, text: str):
-    """Edit message with Markdown, fall back to plain text if parsing fails."""
+    """Edit message — plain text to avoid Markdown parsing issues."""
     try:
-        await status_msg.edit_text(text, parse_mode="Markdown")
-    except Exception:
-        try:
-            await status_msg.edit_text(text)
-        except Exception as e:
-            logger.error(f"Failed to edit message: {e}")
+        await status_msg.edit_text(text)
+    except Exception as e:
+        logger.error(f"Failed to edit message: {e}")
 
 
 @router.message(Command("start"))
@@ -104,12 +101,10 @@ async def handle_task(message: types.Message, intent, status_msg) -> str | None:
     task = await create_task(user_id, task_data)
 
     if task:
-        due_str = f"\n📅 תאריך: {task.get('due_at')}" if task.get('due_at') else ""
+        due_str = f"\nעד: {task.get('due_at')}" if task.get('due_at') else ""
         text = (
-            f"✅ *משימה נוצרה*\n"
-            f"📝 {task['title']}"
-            f"{due_str}\n"
-            f"🔥 עדיפות: {task['priority']}"
+            f"נוצרה משימה: {task['title']}"
+            f"{due_str}"
         )
         await safe_edit(status_msg, text)
         return text
@@ -152,10 +147,9 @@ async def handle_calendar(message: types.Message, intent, status_msg) -> str | N
 
     if link:
         text = (
-            f"📅 *אירוע נוצר!*\n"
-            f"📝 {event_data.summary}\n"
-            f"🕒 {start_dt.strftime('%d/%m %H:%M')}\n"
-            f"🔗 [צפה ביומן]({link})"
+            f"נקבע: {event_data.summary}\n"
+            f"{start_dt.strftime('%d/%m %H:%M')}\n"
+            f"{link}"
         )
         await safe_edit(status_msg, text)
         return text
@@ -176,11 +170,7 @@ async def handle_note(message: types.Message, intent, status_msg) -> str | None:
 
     if saved_note:
         tags_str = " ".join([f"#{t}" for t in note_data.tags])
-        text = (
-            f"🧠 *הערה נשמרה*\n"
-            f"📝 {note_data.content}\n"
-            f"🏷 {tags_str}"
-        )
+        text = f"נשמר: {note_data.content}\n{tags_str}"
         await safe_edit(status_msg, text)
         return text
     else:
@@ -234,16 +224,13 @@ async def handle_url_save(message: types.Message, urls: list[str], status_msg) -
         tags_str = " ".join([f"#{t}" for t in result["tags"]]) if result["tags"] else ""
         kp_str = ""
         if result["key_points"]:
-            kp_str = "\n".join([f"  • {kp}" for kp in result["key_points"]])
-            kp_str = f"\n\n📌 *נקודות מפתח:*\n{kp_str}"
+            kp_str = "\n" + "\n".join([f"- {kp}" for kp in result["key_points"]])
 
         text = (
-            f"🧠 *נשמר לארכיון הידע*\n\n"
-            f"📄 *{fetched['title']}*\n"
-            f"🔗 {url}\n\n"
-            f"📝 {result['summary']}"
+            f"שמרתי: {fetched['title']}\n\n"
+            f"{result['summary']}"
             f"{kp_str}\n\n"
-            f"🏷 {tags_str}"
+            f"{tags_str}"
         )
         await safe_edit(status_msg, text)
         return text
