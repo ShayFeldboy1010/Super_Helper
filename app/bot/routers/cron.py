@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Header, HTTPException, Depends
 from app.core.config import settings
 from app.services.task_service import get_overdue_tasks
+from app.services.memory_service import run_daily_reflection
 from app.bot.loader import bot
 import logging
 
@@ -44,26 +45,78 @@ async def check_reminders():
 async def daily_brief():
     user_id = settings.TELEGRAM_USER_ID
 
-    # 1. Get Calendar
-    from app.services.google_svc import GoogleService
-    google = GoogleService(user_id)
+    try:
+        from app.services.briefing_service import generate_morning_briefing
+        msg = await generate_morning_briefing(user_id)
 
-    calendar_lines = await google.get_todays_events()
-    calendar_str = "\n".join(calendar_lines)
+        # Split if exceeds Telegram 4096 char limit
+        if len(msg) <= 4096:
+            await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
+        else:
+            # Send in chunks at line breaks
+            chunks = []
+            current = ""
+            for line in msg.split("\n"):
+                if len(current) + len(line) + 1 > 4000:
+                    chunks.append(current)
+                    current = line
+                else:
+                    current += "\n" + line if current else line
+            if current:
+                chunks.append(current)
 
-    # 2. Get Tasks
-    from app.services.task_service import get_pending_tasks
-    tasks = await get_pending_tasks(user_id)
-    task_str = "No pending tasks! 🎉"
-    if tasks:
-        task_str = "\n".join([f"• {t['title']} (Due: {t.get('due_at')})" for t in tasks])
+            for chunk in chunks:
+                try:
+                    await bot.send_message(chat_id=user_id, text=chunk, parse_mode="Markdown")
+                except Exception:
+                    await bot.send_message(chat_id=user_id, text=chunk)
 
-    msg = (
-        f"☀️ **בוקר טוב! הנה הסיכום היומי שלך:**\n\n"
-        f"📅 **יומן:**\n{calendar_str}\n\n"
-        f"📝 **משימות:**\n{task_str}\n\n"
-        f"יום פרודוקטיבי! 🚀"
-    )
+        return {"status": "ok", "message": "Enhanced briefing sent"}
 
-    await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
-    return {"status": "ok", "message": "Briefing sent"}
+    except Exception as e:
+        logger.error(f"Enhanced briefing failed: {e}, falling back to basic")
+        # Fallback: basic briefing
+        from app.services.google_svc import GoogleService
+        from app.services.task_service import get_pending_tasks
+
+        google = GoogleService(user_id)
+        calendar_lines = await google.get_todays_events()
+        calendar_str = "\n".join(calendar_lines)
+
+        tasks = await get_pending_tasks(user_id)
+        task_str = "אין משימות פתוחות."
+        if tasks:
+            task_str = "\n".join([f"• {t['title']}" for t in tasks])
+
+        msg = (
+            f"☀️ *תדריך בוקר*\n\n"
+            f"📅 *יומן:*\n{calendar_str}\n\n"
+            f"✅ *משימות:*\n{task_str}"
+        )
+        try:
+            await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
+        except Exception:
+            await bot.send_message(chat_id=user_id, text=msg)
+        return {"status": "ok", "message": "Basic briefing sent (fallback)"}
+
+
+@router.get("/daily-reflection")
+async def daily_reflection():
+    user_id = settings.TELEGRAM_USER_ID
+
+    result = await run_daily_reflection(user_id)
+
+    # Send Telegram summary if new insights were found
+    if result["new_insights"] > 0 or result["reinforced_insights"] > 0:
+        try:
+            msg = (
+                f"🧠 *סיכום רפלקציה יומית*\n"
+                f"אינטראקציות שנותחו: {result['interactions_analyzed']}\n"
+                f"תובנות חדשות: {result['new_insights']}\n"
+                f"תובנות שחוזקו: {result['reinforced_insights']}"
+            )
+            await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Failed to send reflection summary: {e}")
+
+    return {"status": "ok", **result}

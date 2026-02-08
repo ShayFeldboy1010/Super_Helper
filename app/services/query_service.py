@@ -14,7 +14,7 @@ class QueryService:
         self.user_id = user_id
         self.google = GoogleService(user_id)
 
-    async def answer_query(self, query_text: str, context_needed: list[str], target_date: str = None) -> str:
+    async def answer_query(self, query_text: str, context_needed: list[str], target_date: str = None, memory_context: str = "") -> str:
         context_data = []
 
         # 1. Fetch Calendar if needed or default
@@ -65,11 +65,20 @@ class QueryService:
         full_context = "\n\n".join(context_data)
 
         system_prompt = (
-            "אתה עוזר אישי חכם ויעיל. ענה על שאלת המשתמש בהתבסס על המידע שניתן לך.\n"
-            "ענה תמיד בעברית.\n"
-            "אם התשובה לא נמצאת במידע, אמור שאינך יודע.\n"
-            "תהיה תמציתי וידידותי. השתמש באימוג'ים בצורה מתונה."
+            "אתה ראש מטה אישי (Chief of Staff). פורמט BLUF — שורה תחתונה קודם.\n"
+            "ענה תמיד בעברית. תמציתי, ישיר, ללא מילות מילוי.\n"
+            "• בולטים, לא פסקאות\n"
+            "• המידע החשוב ביותר — קודם\n"
+            "• אם אין תשובה במידע — אמור שאינך יודע\n"
+            "• אל תוסיף סיסמאות מוטיבציה. תן מידע, לא נאומים.\n"
+            "• אם יש פעולה מומלצת — הצע אותה בסוף"
         )
+
+        if memory_context:
+            system_prompt += (
+                "\n\nמידע שנצבר על המשתמש (השתמש בו בטבעיות, בלי להזכיר שיש לך אותו):\n"
+                + memory_context
+            )
 
         try:
             chat_completion = await client.chat.completions.create(

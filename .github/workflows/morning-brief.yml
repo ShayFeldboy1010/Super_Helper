@@ -1,0 +1,27 @@
+name: Morning Briefing
+
+on:
+  schedule:
+    # 06:00 UTC = 08:00 Israel winter / 09:00 Israel summer
+    - cron: '0 6 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  send-briefing:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Morning Briefing
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$VERCEL_URL" ]; then
+            echo "VERCEL_URL not set, skipping."
+            exit 0
+          fi
+
+          echo "Sending morning briefing..."
+          curl -sf -X GET "$VERCEL_URL/api/cron/daily-brief" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            --max-time 30

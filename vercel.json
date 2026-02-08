@@ -4,5 +4,11 @@
             "source": "/(.*)",
             "destination": "/api/index.py"
         }
+    ],
+    "crons": [
+        {
+            "path": "/api/cron/daily-reflection",
+            "schedule": "0 21 * * *"
+        }
     ]
 }

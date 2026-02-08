@@ -110,6 +110,47 @@ class GoogleService:
             logger.error(f"Calendar API error: {e}")
             return [f"❌ שגיאה בשליפת לוח שנה: {str(e)}"]
 
+    async def get_todays_events_detailed(self) -> List[Dict[str, Any]]:
+        """Fetch today's events as structured dicts for conflict detection."""
+        if not self.creds:
+            if not await self.authenticate():
+                return []
+
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo("Asia/Jerusalem")
+            service = build('calendar', 'v3', credentials=self.creds)
+
+            now = datetime.now(tz)
+            day_start = now
+            day_end = datetime.combine(now.date(), datetime.max.time()).replace(tzinfo=tz)
+
+            events_result = service.events().list(
+                calendarId='primary',
+                timeMin=day_start.isoformat(),
+                timeMax=day_end.isoformat(),
+                maxResults=20,
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+
+            events = events_result.get('items', [])
+            detailed = []
+            for event in events:
+                start_raw = event['start'].get('dateTime', event['start'].get('date'))
+                end_raw = event['end'].get('dateTime', event['end'].get('date'))
+                detailed.append({
+                    "summary": event.get('summary', '(ללא כותרת)'),
+                    "start": start_raw,
+                    "end": end_raw,
+                    "location": event.get('location', ''),
+                })
+            return detailed
+
+        except Exception as e:
+            logger.error(f"Calendar detailed API error: {e}")
+            return []
+
     async def create_calendar_event(self, title: str, start_dt: datetime) -> Optional[str]:
         if not self.creds:
             if not await self.authenticate():

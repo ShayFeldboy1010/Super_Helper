@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "https://super-helper-theta.vercel.app/auth/callback" 
     
+    # Market
+    STOCK_WATCHLIST: str = "NVDA,MSFT,GOOGL,META,AAPL"
+    STOCK_INDICES: str = "^GSPC,^IXIC,^TA125.TA"
+
     # Defaults
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Telegram Command Center"

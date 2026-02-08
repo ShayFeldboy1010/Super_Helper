@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 ROUTER_SYSTEM_PROMPT = """
-You are the central "Smart Router" for a personal productivity bot.
+You are the Chief of Staff router — military precision, zero waste. Classify and extract.
 Your goal is to classify the user's natural language input into one of 4 categories and extract relevant details.
 The user speaks Hebrew. Understand Hebrew input.
 

@@ -10,16 +10,42 @@ async def save_note(user_id: int, content: str, tags: Optional[List[str]] = None
             "user_id": user_id,
             "content": content,
             "tags": tags or [],
-            "metadata": {} # Future proofing
+            "metadata": {}
         }
-        
-        # Ensure user exists (just in case, though Auth middleware should handle this usually, 
-        # but for robust service calls we can upsert or assume existence)
-        # We'll rely on the fact that they are talking to the bot, so they exist.
-        
+
         response = supabase.table("archive").insert(payload).execute()
         return response.data[0] if response.data else None
-        
+
     except Exception as e:
         logger.error(f"Failed to save note: {e}")
+        return None
+
+
+async def save_url_knowledge(
+    user_id: int,
+    url: str,
+    title: str,
+    content: str,
+    summary: str,
+    tags: List[str],
+    key_points: List[str],
+) -> Optional[dict]:
+    """Save URL content as a knowledge entry in the archive."""
+    try:
+        payload = {
+            "user_id": user_id,
+            "content": summary,
+            "tags": tags or [],
+            "metadata": {
+                "type": "url",
+                "url": url,
+                "title": title,
+                "key_points": key_points,
+                "original_content_preview": content[:500],
+            },
+        }
+        response = supabase.table("archive").insert(payload).execute()
+        return response.data[0] if response.data else None
+    except Exception as e:
+        logger.error(f"Failed to save URL knowledge: {e}")
         return None
