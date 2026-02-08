@@ -14,13 +14,14 @@ class QueryService:
         self.user_id = user_id
         self.google = GoogleService(user_id)
 
-    async def answer_query(self, query_text: str, context_needed: list[str]) -> str:
+    async def answer_query(self, query_text: str, context_needed: list[str], target_date: str = None) -> str:
         context_data = []
 
         # 1. Fetch Calendar if needed or default
         if "calendar" in context_needed or not context_needed:
-            events = await self.google.get_todays_events()
-            context_data.append(f"📅 Current Calendar Events:\n" + "\n".join(events))
+            events = await self.google.get_events_for_date(target_date)
+            date_label = target_date if target_date else "היום"
+            context_data.append(f"📅 אירועים ב-{date_label}:\n" + "\n".join(events))
 
         # 2. Fetch Tasks if needed or default
         if "tasks" in context_needed or not context_needed:
@@ -29,9 +30,9 @@ class QueryService:
                 tasks = response.data
                 if tasks:
                     task_list = "\n".join([f"- {t['title']} (Due: {t.get('due_at')})" for t in tasks])
-                    context_data.append(f"✅ Pending Tasks:\n{task_list}")
+                    context_data.append(f"✅ משימות פתוחות:\n{task_list}")
                 else:
-                    context_data.append("✅ No pending tasks.")
+                    context_data.append("✅ אין משימות פתוחות.")
             except Exception as e:
                 logger.error(f"Error fetching tasks: {e}")
 
@@ -42,7 +43,7 @@ class QueryService:
                 notes = response.data
                 if notes:
                     note_list = "\n".join([f"- {n['content']} (Tags: {n['tags']})" for n in notes])
-                    context_data.append(f"📝 Recent Notes:\n{note_list}")
+                    context_data.append(f"📝 הערות אחרונות:\n{note_list}")
              except Exception as e:
                 logger.error(f"Error fetching notes: {e}")
 
@@ -53,10 +54,10 @@ class QueryService:
                 if emails:
                     email_lines = []
                     for e in emails:
-                        email_lines.append(f"- From: {e['from']} | Subject: {e['subject']}\n  {e['snippet'][:100]}")
-                    context_data.append(f"📧 Recent Emails:\n" + "\n".join(email_lines))
+                        email_lines.append(f"- מאת: {e['from']} | נושא: {e['subject']}\n  {e['snippet'][:100]}")
+                    context_data.append(f"📧 אימיילים אחרונים:\n" + "\n".join(email_lines))
                 else:
-                    context_data.append("📧 No recent emails.")
+                    context_data.append("📧 אין אימיילים אחרונים.")
             except Exception as e:
                 logger.error(f"Error fetching emails: {e}")
 
@@ -64,9 +65,10 @@ class QueryService:
         full_context = "\n\n".join(context_data)
 
         system_prompt = (
-            "You are a helpful personal assistant. Answer the user's question based ONLY on the provided context.\n"
-            "If the answer is not in the context, say you don't know or suggest checking elsewhere.\n"
-            "Keep the answer concise and friendly."
+            "אתה עוזר אישי חכם ויעיל. ענה על שאלת המשתמש בהתבסס על המידע שניתן לך.\n"
+            "ענה תמיד בעברית.\n"
+            "אם התשובה לא נמצאת במידע, אמור שאינך יודע.\n"
+            "תהיה תמציתי וידידותי. השתמש באימוג'ים בצורה מתונה."
         )
 
         try:
@@ -81,4 +83,4 @@ class QueryService:
             return chat_completion.choices[0].message.content
         except Exception as e:
             logger.error(f"LLM generation error: {e}")
-            return "❌ I encountered an error checking your data."
+            return "❌ נתקלתי בשגיאה בעת בדיקת הנתונים שלך."

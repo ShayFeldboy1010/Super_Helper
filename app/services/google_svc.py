@@ -51,19 +51,40 @@ class GoogleService:
             return False
 
     async def get_todays_events(self) -> List[str]:
+        """Fetch today's remaining events."""
+        return await self.get_events_for_date(None)
+
+    async def get_events_for_date(self, target_date: str = None) -> List[str]:
+        """
+        Fetch events for a specific date (YYYY-MM-DD) or today if None.
+        Returns formatted string lines.
+        """
         if not self.creds:
             if not await self.authenticate():
-                return ["⚠️ Please connect your Google Account first."]
+                return ["⚠️ אנא חבר את חשבון Google שלך קודם."]
 
         try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo("Asia/Jerusalem")
             service = build('calendar', 'v3', credentials=self.creds)
 
-            now = datetime.utcnow().isoformat() + 'Z'
+            if target_date:
+                try:
+                    day = datetime.strptime(target_date, "%Y-%m-%d").date()
+                except ValueError:
+                    day = datetime.now(tz).date()
+                day_start = datetime.combine(day, datetime.min.time()).replace(tzinfo=tz)
+                day_end = datetime.combine(day, datetime.max.time()).replace(tzinfo=tz)
+            else:
+                now = datetime.now(tz)
+                day_start = now
+                day_end = datetime.combine(now.date(), datetime.max.time()).replace(tzinfo=tz)
 
             events_result = service.events().list(
                 calendarId='primary',
-                timeMin=now,
-                maxResults=10,
+                timeMin=day_start.isoformat(),
+                timeMax=day_end.isoformat(),
+                maxResults=15,
                 singleEvents=True,
                 orderBy='startTime'
             ).execute()
@@ -71,7 +92,7 @@ class GoogleService:
             events = events_result.get('items', [])
 
             if not events:
-                return ["No upcoming events found."]
+                return ["אין אירועים."]
 
             summary_lines = []
             for event in events:
@@ -87,7 +108,7 @@ class GoogleService:
 
         except Exception as e:
             logger.error(f"Calendar API error: {e}")
-            return [f"❌ Error fetching calendar: {str(e)}"]
+            return [f"❌ שגיאה בשליפת לוח שנה: {str(e)}"]
 
     async def create_calendar_event(self, title: str, start_dt: datetime) -> Optional[str]:
         if not self.creds:

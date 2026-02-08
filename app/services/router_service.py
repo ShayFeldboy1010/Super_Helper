@@ -10,10 +10,12 @@ logger = logging.getLogger(__name__)
 client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 ROUTER_SYSTEM_PROMPT = """
-You are the central "Smart Router" for a personal productivity bot. 
+You are the central "Smart Router" for a personal productivity bot.
 Your goal is to classify the user's natural language input into one of 4 categories and extract relevant details.
+The user speaks Hebrew. Understand Hebrew input.
 
 Current Date/Time: {current_time}
+Day of week: {current_day}
 
 Categories & Schemas:
 
@@ -21,14 +23,14 @@ Categories & Schemas:
 Example output:
 {{
   "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Buy milk"}},
-  "task": {{"title": "Buy milk", "due_date": "tomorrow", "time": null, "priority": 1, "category": "shopping"}}
+  "task": {{"title": "Buy milk", "due_date": "2026-02-09 09:00:00", "time": null, "priority": 1, "category": "shopping"}}
 }}
 
 2. **calendar**: A specific event with a time/place.
 Example output:
 {{
   "classification": {{"action_type": "calendar", "confidence": 0.95, "summary": "Dentist tomorrow at 10am"}},
-  "calendar": {{"summary": "Dentist appointment", "start_time": "tomorrow at 10:00", "end_time": "tomorrow at 11:00", "location": null, "description": null}}
+  "calendar": {{"summary": "Dentist appointment", "start_time": "2026-02-09 10:00:00", "end_time": "2026-02-09 11:00:00", "location": null, "description": null}}
 }}
 
 3. **note**: Information to save for later.
@@ -38,61 +40,75 @@ Example output:
   "note": {{"content": "Wifi password is 12345", "tags": ["password", "wifi"]}}
 }}
 
-4. **query**: A question about schedule or data.
-Example output:
+4. **query**: A question about schedule, data, or general conversation.
+Example - asking about a specific day:
+{{
+  "classification": {{"action_type": "query", "confidence": 0.85, "summary": "Check Wednesday schedule"}},
+  "query": {{"query": "What do I have on Wednesday?", "context_needed": ["calendar"], "target_date": "2026-02-11"}}
+}}
+
+Example - asking about today:
 {{
   "classification": {{"action_type": "query", "confidence": 0.85, "summary": "Check today's schedule"}},
-  "query": {{"query": "What do I have today?", "context_needed": ["calendar", "tasks", "email"]}}
+  "query": {{"query": "What do I have today?", "context_needed": ["calendar", "tasks"], "target_date": null}}
+}}
+
+Example - asking about emails:
+{{
+  "classification": {{"action_type": "query", "confidence": 0.9, "summary": "Check recent emails"}},
+  "query": {{"query": "Do I have any new emails?", "context_needed": ["email"], "target_date": null}}
 }}
 
 context_needed options: "calendar", "tasks", "archive", "email"
 - Use "email" when the user asks about emails, inbox, or messages.
-- Use "calendar" for schedule/events, "tasks" for to-dos, "archive" for saved notes.
+- Use "calendar" for schedule/events questions.
+- Use "tasks" for to-do related questions.
+- Use "archive" for saved notes.
 
-Example for email query:
-{{
-  "classification": {{"action_type": "query", "confidence": 0.9, "summary": "Check recent emails"}},
-  "query": {{"query": "Do I have any new emails?", "context_needed": ["email"]}}
-}}
+target_date: When the user asks about a SPECIFIC day (e.g. "Wednesday", "next Sunday", "February 15th"), compute the exact YYYY-MM-DD date based on Current Date/Time and set it as target_date. If the user says a day name without "next" or "last", assume THIS COMING occurrence (the nearest future one). If asking about "today", set target_date to null.
 
 Rules:
 - If it's a greeting or casual message, classify as "query" with query="general greeting" and context_needed=[].
 - If it's a specific event with time, prefer 'calendar' over 'task'.
 - **CRITICAL**: For all dates and times (start_time, due_date), convert them to ABSOLUTE `YYYY-MM-DD HH:MM:SS` format based on the "Current Date/Time" provided. Do NOT return "tomorrow" or relative strings.
+- **CRITICAL**: When the user mentions a day name like "Wednesday" / "יום רביעי", calculate the actual date of THIS week's occurrence (or next week if that day has already passed). Use the "Day of week" provided above to calculate.
 - Return ONLY valid JSON matching the examples above.
 - Include ONLY the fields shown in the examples for each action type.
 """
 
 async def route_intent(text: str) -> RouterResponse:
     try:
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+        now = datetime.now()
+        current_time = now.strftime("%Y-%m-%d %H:%M:%S")
+        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        current_day = days[now.weekday()]
+
         response = await client.chat.completions.create(
             model="moonshotai/kimi-k2-instruct-0905",
             messages=[
-                {"role": "system", "content": ROUTER_SYSTEM_PROMPT.format(current_time=current_time)},
+                {"role": "system", "content": ROUTER_SYSTEM_PROMPT.format(
+                    current_time=current_time,
+                    current_day=current_day
+                )},
                 {"role": "user", "content": text}
             ],
             response_format={"type": "json_object"},
             temperature=0.1
         )
-        
+
         content = response.choices[0].message.content
         logger.info(f"Router Raw Output: {content}")
-        print(f"DEBUG: Router Raw Output: {content}")
-        
+
         data = json.loads(content)
         return RouterResponse(**data)
-        
+
     except Exception as e:
         logger.error(f"Router Error: {e}")
-        print(f"DEBUG: Router Error: {e}")
-        # Fallback: Treat as a Note or Task? Let's Default to Task for safety
         from app.models.router_models import ActionClassification, TaskPayload
         return RouterResponse(
             classification=ActionClassification(
-                action_type="task", 
-                confidence=0.5, 
+                action_type="task",
+                confidence=0.5,
                 summary="Fallback due to error"
             ),
             task=TaskPayload(title=text)

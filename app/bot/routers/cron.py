@@ -59,10 +59,10 @@ async def daily_brief():
         task_str = "\n".join([f"• {t['title']} (Due: {t.get('due_at')})" for t in tasks])
 
     msg = (
-        f"☀️ **Good Morning! Here is your Daily Brief:**\n\n"
-        f"📅 **Calendar:**\n{calendar_str}\n\n"
-        f"📝 **Top Tasks:**\n{task_str}\n\n"
-        f"Have a productive day! 🚀"
+        f"☀️ **בוקר טוב! הנה הסיכום היומי שלך:**\n\n"
+        f"📅 **יומן:**\n{calendar_str}\n\n"
+        f"📝 **משימות:**\n{task_str}\n\n"
+        f"יום פרודוקטיבי! 🚀"
     )
 
     await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
