@@ -42,11 +42,21 @@ Example output:
 Example output:
 {{
   "classification": {{"action_type": "query", "confidence": 0.85, "summary": "Check today's schedule"}},
-  "query": {{"query": "What do I have today?", "context_needed": ["calendar", "tasks"]}}
+  "query": {{"query": "What do I have today?", "context_needed": ["calendar", "tasks", "email"]}}
+}}
+
+context_needed options: "calendar", "tasks", "archive", "email"
+- Use "email" when the user asks about emails, inbox, or messages.
+- Use "calendar" for schedule/events, "tasks" for to-dos, "archive" for saved notes.
+
+Example for email query:
+{{
+  "classification": {{"action_type": "query", "confidence": 0.9, "summary": "Check recent emails"}},
+  "query": {{"query": "Do I have any new emails?", "context_needed": ["email"]}}
 }}
 
 Rules:
-- If it's a greeting or casual message, classify as "query" with query="general greeting".
+- If it's a greeting or casual message, classify as "query" with query="general greeting" and context_needed=[].
 - If it's a specific event with time, prefer 'calendar' over 'task'.
 - **CRITICAL**: For all dates and times (start_time, due_date), convert them to ABSOLUTE `YYYY-MM-DD HH:MM:SS` format based on the "Current Date/Time" provided. Do NOT return "tomorrow" or relative strings.
 - Return ONLY valid JSON matching the examples above.

@@ -16,34 +16,43 @@ async def create_task(user_id: int, task_data):
         data = task_data
     else:
         data = task_data.__dict__
-    
+
     # Calculate due_at
     due_at = None
+    parsed_time = None
     if data.get('due_date'):
         target_date = None
         now = datetime.now(TZ)
         today = now.date()
-        
+
         d = data.get('due_date', '').lower().strip()
         if d == "today":
             target_date = today
         elif d == "tomorrow":
             target_date = today + timedelta(days=1)
         else:
+            # Try "YYYY-MM-DD HH:MM:SS" first (LLM format)
             try:
-                target_date = datetime.strptime(d, "%Y-%m-%d").date()
+                parsed_dt = datetime.strptime(d, "%Y-%m-%d %H:%M:%S")
+                target_date = parsed_dt.date()
+                parsed_time = parsed_dt.time()
             except ValueError:
-                logger.warning(f"Invalid date format: {d}")
-        
+                # Try plain "YYYY-MM-DD"
+                try:
+                    target_date = datetime.strptime(d, "%Y-%m-%d").date()
+                except ValueError:
+                    logger.warning(f"Invalid date format: {d}")
+
         if target_date:
-            if data.get('time'):
+            if parsed_time:
+                due_at = datetime.combine(target_date, parsed_time).replace(tzinfo=TZ)
+            elif data.get('time'):
                 try:
                     t = datetime.strptime(data['time'], "%H:%M").time()
                     due_at = datetime.combine(target_date, t).replace(tzinfo=TZ)
                 except ValueError:
-                    due_at = datetime.combine(target_date, time(9, 0)).replace(tzinfo=TZ) # Default 9 AM
+                    due_at = datetime.combine(target_date, time(9, 0)).replace(tzinfo=TZ)
             else:
-                # If date is strictly future, default to 9am. If today, maybe user means EOD? sticking to 9am or noon is safe.
                 due_at = datetime.combine(target_date, time(9, 0)).replace(tzinfo=TZ)
 
     payload = {
@@ -57,7 +66,6 @@ async def create_task(user_id: int, task_data):
 
     try:
         # Ensure user exists to avoid FK violation
-        # We try to Insert user, ignoring if already exists
         try:
              supabase.table("users").upsert({"telegram_id": user_id}, on_conflict="telegram_id").execute()
         except Exception as e:

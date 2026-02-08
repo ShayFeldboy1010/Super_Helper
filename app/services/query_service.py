@@ -2,7 +2,6 @@ import logging
 import json
 from app.core.database import supabase
 from app.services.google_svc import GoogleService
-# from app.services.llm_engine import LLMEngine # Removed unused import
 from groq import AsyncGroq
 from app.core.config import settings
 import os
@@ -25,7 +24,6 @@ class QueryService:
 
         # 2. Fetch Tasks if needed or default
         if "tasks" in context_needed or not context_needed:
-            # Fetch pending tasks from DB
             try:
                 response = supabase.table("tasks").select("*").eq("user_id", self.user_id).eq("status", "pending").execute()
                 tasks = response.data
@@ -37,7 +35,7 @@ class QueryService:
             except Exception as e:
                 logger.error(f"Error fetching tasks: {e}")
 
-        # 3. Fetch Notes (Naive: last 5)
+        # 3. Fetch Notes
         if "notes" in context_needed:
              try:
                 response = supabase.table("archive").select("content, tags").eq("user_id", self.user_id).order("created_at", desc=True).limit(5).execute()
@@ -48,15 +46,29 @@ class QueryService:
              except Exception as e:
                 logger.error(f"Error fetching notes: {e}")
 
-        # 4. Generate Answer with LLM
+        # 4. Fetch Emails
+        if "email" in context_needed:
+            try:
+                emails = await self.google.get_recent_emails(max_results=5)
+                if emails:
+                    email_lines = []
+                    for e in emails:
+                        email_lines.append(f"- From: {e['from']} | Subject: {e['subject']}\n  {e['snippet'][:100]}")
+                    context_data.append(f"📧 Recent Emails:\n" + "\n".join(email_lines))
+                else:
+                    context_data.append("📧 No recent emails.")
+            except Exception as e:
+                logger.error(f"Error fetching emails: {e}")
+
+        # 5. Generate Answer with LLM
         full_context = "\n\n".join(context_data)
-        
+
         system_prompt = (
             "You are a helpful personal assistant. Answer the user's question based ONLY on the provided context.\n"
             "If the answer is not in the context, say you don't know or suggest checking elsewhere.\n"
             "Keep the answer concise and friendly."
         )
-        
+
         try:
             chat_completion = await client.chat.completions.create(
                 messages=[

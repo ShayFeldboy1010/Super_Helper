@@ -1,28 +1,23 @@
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
 from app.core.config import settings
 import base64
 
-# Ensure SECRET_KEY is valid for Fernet (32 url-safe base64-encoded bytes)
-# If the user provided a simple string, we hash/pad it. 
-# For simplicity here, we assume the user will eventually provide a valid key 
-# OR we generate one deterministically if needed.
-# Ideally, we'd use a proper KDF.
-# Let's trust the dev env for now or handle the error gracefully.
-
 def get_fernet():
     try:
-        # Try to use the key directly
+        # Try to use the key directly as a valid Fernet key
         return Fernet(settings.SECRET_KEY.encode())
     except Exception:
-        # Fallback: Generate a key from the secret string (not production safe but works for now)
-        # In a real app, use PBKDF2HMAC
-        # For this personal project, let's just warn and use a dummy if invalid, 
-        # or require the user to fix it.
-        # Actually, let's make a simple consistent key from the string provided.
-        # This is A HACK for ease of use.
-        import hashlib
-        key = hashlib.sha256(settings.SECRET_KEY.encode()).digest()
-        return Fernet(base64.urlsafe_b64encode(key))
+        # Derive a valid Fernet key from the secret string using PBKDF2HMAC
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=b"ai-personal-assistant-salt",
+            iterations=480_000,
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(settings.SECRET_KEY.encode()))
+        return Fernet(key)
 
 fernet = get_fernet()
 

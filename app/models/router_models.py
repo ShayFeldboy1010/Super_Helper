@@ -26,7 +26,7 @@ class NotePayload(BaseModel):
 
 class QueryPayload(BaseModel):
     query: str
-    context_needed: list[Literal["calendar", "tasks", "archive"]] = []
+    context_needed: list[Literal["calendar", "tasks", "archive", "email"]] = []
 
 class RouterResponse(BaseModel):
     classification: ActionClassification
