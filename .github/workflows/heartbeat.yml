@@ -1,0 +1,45 @@
+name: Proactive Heartbeats
+
+on:
+  schedule:
+    # Mid-week check-in: Wed + Thu at 12:00 UTC (14:00/15:00 Israel)
+    - cron: '0 12 * * 3,4'
+    # Evening wrap-up: Sun-Thu at 18:00 UTC (20:00/21:00 Israel)
+    - cron: '0 18 * * 0,1,2,3,4'
+    # Weekly review: Sunday at 16:00 UTC (18:00/19:00 Israel)
+    - cron: '0 16 * * 0'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine Endpoint
+        id: endpoint
+        run: |
+          DAY=$(date -u +%u)  # 1=Mon, 7=Sun
+          HOUR=$(date -u +%H)
+
+          if [ "$DAY" = "7" ] && [ "$HOUR" = "16" ]; then
+            echo "path=/api/cron/weekly-review" >> $GITHUB_OUTPUT
+            echo "type=weekly-review" >> $GITHUB_OUTPUT
+          else
+            echo "path=/api/cron/heartbeat" >> $GITHUB_OUTPUT
+            echo "type=heartbeat" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Heartbeat
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$VERCEL_URL" ]; then
+            echo "VERCEL_URL not set, skipping."
+            exit 0
+          fi
+
+          echo "Sending ${{ steps.endpoint.outputs.type }}..."
+          curl -sf -X GET "$VERCEL_URL${{ steps.endpoint.outputs.path }}" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            --max-time 30

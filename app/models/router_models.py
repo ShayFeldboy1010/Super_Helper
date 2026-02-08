@@ -26,7 +26,7 @@ class NotePayload(BaseModel):
 
 class QueryPayload(BaseModel):
     query: str
-    context_needed: list[Literal["calendar", "tasks", "archive", "email"]] = []
+    context_needed: list[Literal["calendar", "tasks", "archive", "email", "web"]] = []
     target_date: Optional[str] = None  # YYYY-MM-DD for date-specific queries
 
 class RouterResponse(BaseModel):

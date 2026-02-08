@@ -42,7 +42,7 @@ Example output:
   "note": {{"content": "Wifi password is 12345", "tags": ["password", "wifi"]}}
 }}
 
-4. **query**: A question about schedule, data, or general conversation.
+4. **query**: A question, conversation, request for information, or general chat.
 Example - asking about a specific day:
 {{
   "classification": {{"action_type": "query", "confidence": 0.85, "summary": "Check Wednesday schedule"}},
@@ -61,17 +61,38 @@ Example - asking about emails:
   "query": {{"query": "Do I have any new emails?", "context_needed": ["email"], "target_date": null}}
 }}
 
-context_needed options: "calendar", "tasks", "archive", "email"
+Example - web search / general knowledge question:
+{{
+  "classification": {{"action_type": "query", "confidence": 0.9, "summary": "Search for latest AI news"}},
+  "query": {{"query": "What are the latest developments in autonomous driving?", "context_needed": ["web"], "target_date": null}}
+}}
+
+Example - casual conversation or opinion:
+{{
+  "classification": {{"action_type": "query", "confidence": 0.8, "summary": "Casual chat about project idea"}},
+  "query": {{"query": "What do you think about building a SaaS for freelancers?", "context_needed": [], "target_date": null}}
+}}
+
+Example - asking for advice/ideas:
+{{
+  "classification": {{"action_type": "query", "confidence": 0.85, "summary": "Asking for business ideas"}},
+  "query": {{"query": "Give me ideas for a side project", "context_needed": [], "target_date": null}}
+}}
+
+context_needed options: "calendar", "tasks", "archive", "email", "web"
 - Use "email" when the user asks about emails, inbox, or messages.
 - Use "calendar" for schedule/events questions.
 - Use "tasks" for to-do related questions.
-- Use "archive" for saved notes.
+- Use "archive" for saved notes or previously stored knowledge.
+- Use "web" when the user asks about current events, factual questions, searches, "what is X", "find me Y", or anything that needs up-to-date information from the internet.
+- Use [] (empty) for casual chat, opinions, ideas, advice, greetings — things that don't need external data.
 
 target_date: When the user asks about a SPECIFIC day (e.g. "Wednesday", "next Sunday", "February 15th"), compute the exact YYYY-MM-DD date based on Current Date/Time and set it as target_date. If the user says a day name without "next" or "last", assume THIS COMING occurrence (the nearest future one). If asking about "today", set target_date to null.
 
 Rules:
-- If it's a greeting or casual message, classify as "query" with query="general greeting" and context_needed=[].
+- If it's a greeting or casual message, classify as "query" with the ACTUAL text as query (not "general greeting") and context_needed=[].
 - If it's a specific event with time, prefer 'calendar' over 'task'.
+- If the user asks a general knowledge question, opinion, or wants to chat — classify as "query". The bot can answer anything.
 - **CRITICAL**: For all dates and times (start_time, due_date), convert them to ABSOLUTE `YYYY-MM-DD HH:MM:SS` format based on the "Current Date/Time" provided. Do NOT return "tomorrow" or relative strings.
 - **CRITICAL**: When the user mentions a day name like "Wednesday" / "יום רביעי", calculate the actual date of THIS week's occurrence (or next week if that day has already passed). Use the "Day of week" provided above to calculate.
 - Return ONLY valid JSON matching the examples above.

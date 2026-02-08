@@ -25,7 +25,7 @@ async def safe_edit(status_msg, text: str):
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("מה המצב? אני ראש המטה שלך. דבר.")
+    await message.answer("יו, מה קורה? אני פה. ספר לי מה צריך.")
 
 
 @router.message(F.text)
@@ -193,16 +193,11 @@ from app.services.query_service import QueryService
 
 
 async def handle_query(message: types.Message, intent, status_msg, memory_context: str = "") -> str | None:
-    # If it's just a greeting, handle it simply
-    if intent.query and intent.query.query.lower() in ["general greeting", "hello", "hi", "שלום", "היי"]:
-        text = "מה קורה. במה אני יכול לעזור?"
-        await safe_edit(status_msg, text)
-        return text
-
     qs = QueryService(message.from_user.id)
+    query_text = intent.query.query if intent.query else message.text
     target_date = intent.query.target_date if intent.query else None
     context_needed = intent.query.context_needed if intent.query else []
-    answer = await qs.answer_query(intent.query.query, context_needed, target_date, memory_context)
+    answer = await qs.answer_query(query_text, context_needed, target_date, memory_context)
 
     await safe_edit(status_msg, answer)
     return answer

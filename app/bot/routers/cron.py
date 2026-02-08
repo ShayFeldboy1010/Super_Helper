@@ -100,6 +100,64 @@ async def daily_brief():
         return {"status": "ok", "message": "Basic briefing sent (fallback)"}
 
 
+@router.get("/heartbeat")
+async def heartbeat():
+    """Proactive check-in — mid-week nudge or evening wrap-up depending on time."""
+    user_id = settings.TELEGRAM_USER_ID
+
+    try:
+        from app.services.heartbeat_service import generate_goal_checkin, generate_evening_wrapup
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        now = datetime.now(ZoneInfo("Asia/Jerusalem"))
+        hour = now.hour
+
+        # Evening (20:00-22:00) → wrap-up, otherwise → goal check-in
+        if 20 <= hour <= 22:
+            msg = await generate_evening_wrapup(user_id)
+        else:
+            msg = await generate_goal_checkin(user_id)
+
+        if not msg:
+            return {"status": "ok", "message": "Nothing to report"}
+
+        try:
+            await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
+        except Exception:
+            await bot.send_message(chat_id=user_id, text=msg)
+
+        return {"status": "ok", "message": "Heartbeat sent"}
+
+    except Exception as e:
+        logger.error(f"Heartbeat error: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@router.get("/weekly-review")
+async def weekly_review():
+    """Sunday evening weekly review."""
+    user_id = settings.TELEGRAM_USER_ID
+
+    try:
+        from app.services.heartbeat_service import generate_weekly_review
+        msg = await generate_weekly_review(user_id)
+
+        if not msg:
+            return {"status": "ok", "message": "No review generated"}
+
+        try:
+            await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
+        except Exception:
+            await bot.send_message(chat_id=user_id, text=msg)
+
+        return {"status": "ok", "message": "Weekly review sent"}
+
+    except Exception as e:
+        logger.error(f"Weekly review error: {e}")
+        return {"status": "error", "message": str(e)}
+
+
 @router.get("/daily-reflection")
 async def daily_reflection():
     user_id = settings.TELEGRAM_USER_ID
