@@ -93,8 +93,11 @@ Rules:
 - If it's a greeting or casual message, classify as "query" with the ACTUAL text as query (not "general greeting") and context_needed=[].
 - If it's a specific event with time, prefer 'calendar' over 'task'.
 - If the user asks a general knowledge question, opinion, or wants to chat — classify as "query". The bot can answer anything.
+- When the user asks about a company, person, product, or topic — classify as "query" with context_needed=["web"] so the bot searches for real info.
+- **CRITICAL — TASK CLASSIFICATION**: Only classify as "task" when the user EXPLICITLY asks to create a task, reminder, or to-do. Keywords: "תזכיר לי", "צור משימה", "הוסף תזכורת", "תרשום משימה", "remind me", "add task". If the user just MENTIONS something they need to do but doesn't ask to create a reminder — classify as "query" and let the conversation flow.
 - **CRITICAL**: For all dates and times (start_time, due_date), convert them to ABSOLUTE `YYYY-MM-DD HH:MM:SS` format based on the "Current Date/Time" provided. Do NOT return "tomorrow" or relative strings.
 - **CRITICAL**: When the user mentions a day name like "Wednesday" / "יום רביעי", calculate the actual date of THIS week's occurrence (or next week if that day has already passed). Use the "Day of week" provided above to calculate.
+- When in doubt between "task" and "query", prefer "query". The user will explicitly ask if they want a reminder.
 - Return ONLY valid JSON matching the examples above.
 - Include ONLY the fields shown in the examples for each action type.
 """
@@ -127,12 +130,12 @@ async def route_intent(text: str) -> RouterResponse:
 
     except Exception as e:
         logger.error(f"Router Error: {e}")
-        from app.models.router_models import ActionClassification, TaskPayload
+        from app.models.router_models import ActionClassification, QueryPayload
         return RouterResponse(
             classification=ActionClassification(
-                action_type="task",
+                action_type="query",
                 confidence=0.5,
                 summary="Fallback due to error"
             ),
-            task=TaskPayload(title=text)
+            query=QueryPayload(query=text, context_needed=[])
         )

@@ -42,14 +42,14 @@ class QueryService:
     async def answer_query(self, query_text: str, context_needed: list[str], target_date: str = None, memory_context: str = "") -> str:
         context_data = []
 
-        # 1. Fetch Calendar if needed or default
-        if "calendar" in context_needed or not context_needed:
+        # 1. Fetch Calendar if explicitly needed
+        if "calendar" in context_needed:
             events = await self.google.get_events_for_date(target_date)
             date_label = target_date if target_date else "היום"
             context_data.append(f"📅 אירועים ב-{date_label}:\n" + "\n".join(events))
 
-        # 2. Fetch Tasks if needed or default
-        if "tasks" in context_needed or not context_needed:
+        # 2. Fetch Tasks if explicitly needed
+        if "tasks" in context_needed:
             try:
                 response = supabase.table("tasks").select("*").eq("user_id", self.user_id).eq("status", "pending").execute()
                 tasks = response.data

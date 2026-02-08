@@ -66,20 +66,22 @@ async def get_relevant_insights(
 
         # Tier 2: FTS keyword search if query_text has substance
         if query_text and len(query_text.strip()) > 2:
-            # Build websearch-compatible query (split words, join with &)
             words = [w for w in query_text.strip().split() if len(w) > 1]
             if words:
-                ts_query = " & ".join(words)
-                fts_resp = (
-                    supabase.table("permanent_insights")
-                    .select("insight, category, confidence")
-                    .eq("user_id", user_id)
-                    .eq("is_active", True)
-                    .text_search("fts", ts_query, type="websearch")
-                    .limit(max_insights)
-                    .execute()
-                )
-                results.extend(fts_resp.data or [])
+                ts_query = " | ".join(words)
+                try:
+                    fts_resp = (
+                        supabase.table("permanent_insights")
+                        .select("insight, category, confidence")
+                        .eq("user_id", user_id)
+                        .eq("is_active", True)
+                        .text_search("fts", ts_query)
+                        .limit(max_insights)
+                        .execute()
+                    )
+                    results.extend(fts_resp.data or [])
+                except Exception as fts_err:
+                    logger.warning(f"FTS search failed, skipping: {fts_err}")
 
         if not results:
             return ""
