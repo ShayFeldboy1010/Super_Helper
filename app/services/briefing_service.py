@@ -5,6 +5,7 @@ from datetime import datetime
 from groq import AsyncGroq
 
 from app.core.config import settings
+from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
 from app.services.google_svc import GoogleService
 from app.services.task_service import get_pending_tasks
 from app.services.news_service import fetch_ai_news
@@ -137,11 +138,9 @@ async def generate_morning_briefing(user_id: int) -> str:
         f"✅ משימות פתוחות:\n{_format_tasks_context(tasks)}"
     )
 
-    system_prompt = (
-        "אתה ראש מטה אישי (Chief of Staff). תפקידך: לתת תדריך בוקר חד וממוקד.\n"
-        "כתוב בעברית. פורמט BLUF — שורה תחתונה קודם.\n"
-        "השתמש בבולטים, לא פסקאות.\n"
-        "הודעת טלגרם — תמציתי, ללא מילות מילוי.\n\n"
+    briefing_instructions = (
+        "\n\n═══ הנחיות תדריך בוקר ═══\n"
+        "בנה תדריך בוקר חד וממוקד כהודעת טלגרם.\n"
         "בנה את התדריך בסעיפים הבאים (השתמש באימוג'ים ככותרות):\n"
         "1. 📋 אג'נדה טקטית — לוח זמנים, חפיפות, אימיילים קריטיים\n"
         "2. 🤖 מודיעין AI — 2-3 התפתחויות מפתח\n"
@@ -150,6 +149,7 @@ async def generate_morning_briefing(user_id: int) -> str:
         "5. ✅ משימות חכמות — 2-3 משימות מומלצות מהמשימות הפתוחות\n\n"
         "אם אין מידע לסעיף מסוים, דלג עליו. אל תמציא מידע."
     )
+    system_prompt = CHIEF_OF_STAFF_IDENTITY + briefing_instructions
 
     try:
         chat_completion = await client.chat.completions.create(

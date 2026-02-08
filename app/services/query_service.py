@@ -4,6 +4,7 @@ from app.core.database import supabase
 from app.services.google_svc import GoogleService
 from groq import AsyncGroq
 from app.core.config import settings
+from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
 import os
 
 logger = logging.getLogger(__name__)
@@ -64,15 +65,7 @@ class QueryService:
         # 5. Generate Answer with LLM
         full_context = "\n\n".join(context_data)
 
-        system_prompt = (
-            "אתה ראש מטה אישי (Chief of Staff). פורמט BLUF — שורה תחתונה קודם.\n"
-            "ענה תמיד בעברית. תמציתי, ישיר, ללא מילות מילוי.\n"
-            "• בולטים, לא פסקאות\n"
-            "• המידע החשוב ביותר — קודם\n"
-            "• אם אין תשובה במידע — אמור שאינך יודע\n"
-            "• אל תוסיף סיסמאות מוטיבציה. תן מידע, לא נאומים.\n"
-            "• אם יש פעולה מומלצת — הצע אותה בסוף"
-        )
+        system_prompt = CHIEF_OF_STAFF_IDENTITY
 
         if memory_context:
             system_prompt += (

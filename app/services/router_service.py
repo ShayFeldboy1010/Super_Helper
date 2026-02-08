@@ -1,5 +1,6 @@
 from groq import AsyncGroq
 from app.core.config import settings
+from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
 from app.models.router_models import RouterResponse
 import json
 import logging
@@ -9,9 +10,10 @@ logger = logging.getLogger(__name__)
 
 client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
-ROUTER_SYSTEM_PROMPT = """
-You are the Chief of Staff router — military precision, zero waste. Classify and extract.
-Your goal is to classify the user's natural language input into one of 4 categories and extract relevant details.
+ROUTER_SYSTEM_PROMPT = CHIEF_OF_STAFF_IDENTITY + """
+
+═══ הנחיות ניתוב ═══
+Classify the user's natural language input into one of 4 categories and extract relevant details.
 The user speaks Hebrew. Understand Hebrew input.
 
 Current Date/Time: {current_time}

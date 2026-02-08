@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from groq import AsyncGroq
 
 from app.core.config import settings
+from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
 
 logger = logging.getLogger(__name__)
 client = AsyncGroq(api_key=settings.GROQ_API_KEY)
@@ -61,7 +62,7 @@ async def summarize_and_tag(url: str, title: str, content: str) -> dict:
 
         chat_completion = await client.chat.completions.create(
             messages=[
-                {"role": "system", "content": "אתה מנתח תוכן מקצועי. החזר רק JSON תקין."},
+                {"role": "system", "content": CHIEF_OF_STAFF_IDENTITY + "\n\nאתה מנתח תוכן. החזר רק JSON תקין."},
                 {"role": "user", "content": prompt},
             ],
             model="moonshotai/kimi-k2-instruct-0905",
