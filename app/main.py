@@ -1,4 +1,7 @@
+import asyncio
 from fastapi import FastAPI, Request
+from starlette.background import BackgroundTask
+from starlette.responses import JSONResponse
 from aiogram import types
 from app.core.config import settings
 import logging
@@ -26,22 +29,33 @@ app.include_router(auth.router)
 from app.bot.routers import cron
 app.include_router(cron.router)
 
+async def _process_update(update_data: dict):
+    """Process Telegram update — runs as background task after 200 is sent."""
+    try:
+        update = types.Update(**update_data)
+        await dp.feed_update(bot, update)
+    except Exception as e:
+        logger.error(f"Error processing update: {e}")
+
+
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
     try:
-        # Check secret token
         secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
         if secret_token != settings.M_WEBHOOK_SECRET:
             logger.warning("Invalid webhook secret")
-            return {"status": "unauthorized"}
+            return JSONResponse({"status": "unauthorized"})
 
         update_data = await request.json()
-        update = types.Update(**update_data)
-        await dp.feed_update(bot, update)
-        return {"status": "ok"}
+        # Return 200 immediately, process in background
+        # Vercel keeps the function alive until timeout after response is sent
+        return JSONResponse(
+            {"status": "ok"},
+            background=BackgroundTask(_process_update, update_data),
+        )
     except Exception as e:
         logger.error(f"Error in webhook: {e}")
-        return {"status": "error"}
+        return JSONResponse({"status": "error"})
 
 @app.get("/")
 async def root():
