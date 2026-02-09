@@ -1,7 +1,7 @@
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from app.services.router_service import route_intent
-from app.services.task_service import create_task
+from app.services.task_service import create_task, complete_task, delete_task
 from app.services.memory_service import log_interaction, get_relevant_insights
 from app.services.url_service import extract_urls, fetch_url_content, summarize_and_tag
 from app.services.archive_service import save_url_knowledge
@@ -22,7 +22,7 @@ async def safe_edit(status_msg, text: str):
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("יו, מה קורה? אני פה. ספר לי מה צריך.")
+    await message.answer("Hey, what's up? I'm here. What do you need?")
 
 
 @router.message(F.text)
@@ -33,7 +33,7 @@ async def handle_router_message(message: types.Message):
     # URL interception — skip router if message contains URLs
     urls = extract_urls(message.text)
     if urls:
-        status_msg = await message.answer("🔗 מעבד קישור...")
+        status_msg = await message.answer("Processing link...")
         bot_response = await handle_url_save(message, urls, status_msg)
         if bot_response:
             await log_interaction(
@@ -45,7 +45,7 @@ async def handle_router_message(message: types.Message):
             )
         return
 
-    status_msg = await message.answer("🧠 חושב...")
+    status_msg = await message.answer("...")
 
     try:
         # 1. Route Intent
@@ -71,7 +71,7 @@ async def handle_router_message(message: types.Message):
         elif action_type == "query":
             bot_response = await handle_query(message, intent, status_msg, memory_context)
         else:
-            bot_response = "🤷 לא בטוח מה לעשות עם זה."
+            bot_response = "Not sure what to do with that."
             await safe_edit(status_msg, bot_response)
 
         # 4. Log interaction (fire-and-forget, never blocks)
@@ -86,32 +86,49 @@ async def handle_router_message(message: types.Message):
 
     except Exception as e:
         logger.error(f"Handler Error: {e}")
-        await safe_edit(status_msg, "❌ שגיאה בעיבוד הבקשה.")
+        await safe_edit(status_msg, "Something went wrong. Try again.")
 
 
 async def handle_task(message: types.Message, intent, status_msg) -> str | None:
     if not intent.task:
-        text = "❌ זוהה כמשימה אבל חסרים פרטים."
+        text = "Couldn't parse task details."
         await safe_edit(status_msg, text)
         return text
 
     user_id = message.from_user.id
-    task_data = intent.task.model_dump()
+    action = getattr(intent.task, 'action', 'create')
 
-    task = await create_task(user_id, task_data)
-
-    if task:
-        due_str = f"\nעד: {task.get('due_at')}" if task.get('due_at') else ""
-        text = (
-            f"נוצרה משימה: {task['title']}"
-            f"{due_str}"
-        )
+    if action == "complete":
+        result = await complete_task(user_id, intent.task.title)
+        if result:
+            text = f"Done: {result['title']}"
+        else:
+            text = f"Couldn't find a matching task for \"{intent.task.title}\""
         await safe_edit(status_msg, text)
         return text
-    else:
-        text = "❌ נכשל ביצירת המשימה."
+
+    elif action == "delete":
+        result = await delete_task(user_id, intent.task.title)
+        if result:
+            text = f"Deleted: {result['title']}"
+        else:
+            text = f"Couldn't find a matching task for \"{intent.task.title}\""
         await safe_edit(status_msg, text)
         return text
+
+    else:  # create
+        task_data = intent.task.model_dump()
+        task = await create_task(user_id, task_data)
+
+        if task:
+            due_str = f"\nDue: {task.get('due_at')}" if task.get('due_at') else ""
+            text = f"Task created: {task['title']}{due_str}"
+            await safe_edit(status_msg, text)
+            return text
+        else:
+            text = "Failed to create task."
+            await safe_edit(status_msg, text)
+            return text
 
 
 from app.services.google_svc import GoogleService
@@ -125,7 +142,7 @@ async def handle_calendar(message: types.Message, intent, status_msg) -> str | N
     # 1. Authenticate
     if not await google.authenticate():
         login_url = settings.GOOGLE_REDIRECT_URI.replace("/auth/callback", "/auth/login")
-        text = f"⚠️ *נדרש חיבור לגוגל*\nאנא התחבר קודם:\n[התחבר עם Google]({login_url})"
+        text = f"Need to connect Google first:\n{login_url}"
         await safe_edit(status_msg, text)
         return text
 
@@ -138,7 +155,7 @@ async def handle_calendar(message: types.Message, intent, status_msg) -> str | N
         try:
              start_dt = datetime.fromisoformat(event_data.start_time)
         except:
-             text = f"❌ לא הצלחתי להבין את התאריך: {event_data.start_time}"
+             text = f"Couldn't parse the date: {event_data.start_time}"
              await safe_edit(status_msg, text)
              return text
 
@@ -154,7 +171,7 @@ async def handle_calendar(message: types.Message, intent, status_msg) -> str | N
         await safe_edit(status_msg, text)
         return text
     else:
-        text = "❌ נכשל ביצירת אירוע ביומן Google."
+        text = "Failed to create calendar event."
         await safe_edit(status_msg, text)
         return text
 
@@ -174,7 +191,7 @@ async def handle_note(message: types.Message, intent, status_msg) -> str | None:
         await safe_edit(status_msg, text)
         return text
     else:
-        text = "❌ נכשל בשמירת ההערה."
+        text = "Failed to save note."
         await safe_edit(status_msg, text)
         return text
 
@@ -200,7 +217,7 @@ async def handle_url_save(message: types.Message, urls: list[str], status_msg) -
         fetched = await fetch_url_content(url)
 
         if fetched["error"] and not fetched["content"]:
-            text = f"⚠️ לא הצלחתי לגשת לקישור: {url}\nשומר את הקישור בלבד."
+            text = f"Couldn't access the link, saving URL only: {url}"
             await save_url_knowledge(
                 user_id=message.from_user.id,
                 url=url, title=url, content="",
@@ -227,7 +244,7 @@ async def handle_url_save(message: types.Message, urls: list[str], status_msg) -
             kp_str = "\n" + "\n".join([f"- {kp}" for kp in result["key_points"]])
 
         text = (
-            f"שמרתי: {fetched['title']}\n\n"
+            f"Saved: {fetched['title']}\n\n"
             f"{result['summary']}"
             f"{kp_str}\n\n"
             f"{tags_str}"
@@ -237,6 +254,6 @@ async def handle_url_save(message: types.Message, urls: list[str], status_msg) -
 
     except Exception as e:
         logger.error(f"URL save error: {e}")
-        text = "❌ שגיאה בעיבוד הקישור."
+        text = "Error processing the link."
         await safe_edit(status_msg, text)
         return text

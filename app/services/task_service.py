@@ -77,6 +77,88 @@ async def create_task(user_id: int, task_data):
         logger.error(f"Supabase error: {e}")
         return None
 
+async def complete_task(user_id: int, title_query: str) -> dict | None:
+    """Find a pending task by title match and mark it as completed."""
+    try:
+        resp = (
+            supabase.table("tasks")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("status", "pending")
+            .execute()
+        )
+        tasks = resp.data or []
+        if not tasks:
+            return None
+
+        # Find best match (case-insensitive substring)
+        query_lower = title_query.lower()
+        match = None
+        for t in tasks:
+            if query_lower in t["title"].lower() or t["title"].lower() in query_lower:
+                match = t
+                break
+
+        if not match:
+            # Try looser match — any word overlap
+            query_words = set(query_lower.split())
+            for t in tasks:
+                title_words = set(t["title"].lower().split())
+                if query_words & title_words:
+                    match = t
+                    break
+
+        if not match:
+            return None
+
+        supabase.table("tasks").update({"status": "completed"}).eq("id", match["id"]).execute()
+        return match
+
+    except Exception as e:
+        logger.error(f"Error completing task: {e}")
+        return None
+
+
+async def delete_task(user_id: int, title_query: str) -> dict | None:
+    """Find a pending task by title match and delete it."""
+    try:
+        resp = (
+            supabase.table("tasks")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("status", "pending")
+            .execute()
+        )
+        tasks = resp.data or []
+        if not tasks:
+            return None
+
+        query_lower = title_query.lower()
+        match = None
+        for t in tasks:
+            if query_lower in t["title"].lower() or t["title"].lower() in query_lower:
+                match = t
+                break
+
+        if not match:
+            query_words = set(query_lower.split())
+            for t in tasks:
+                title_words = set(t["title"].lower().split())
+                if query_words & title_words:
+                    match = t
+                    break
+
+        if not match:
+            return None
+
+        supabase.table("tasks").delete().eq("id", match["id"]).execute()
+        return match
+
+    except Exception as e:
+        logger.error(f"Error deleting task: {e}")
+        return None
+
+
 async def get_overdue_tasks(user_id: int):
     try:
         now_iso = datetime.now(TZ).isoformat()

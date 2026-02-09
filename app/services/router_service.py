@@ -17,11 +17,21 @@ Day of week: {current_day}
 
 Categories & Schemas:
 
-1. **task**: Something the user needs to do.
-Example output:
+1. **task**: Create, complete, or delete a task/reminder.
+Example - create:
 {{
-  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Buy milk"}},
-  "task": {{"title": "Buy milk", "due_date": "2026-02-09 09:00:00", "time": null, "priority": 1, "category": "shopping"}}
+  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Create reminder: buy milk"}},
+  "task": {{"action": "create", "title": "Buy milk", "due_date": "2026-02-09 09:00:00", "time": null, "priority": 1, "category": "shopping"}}
+}}
+Example - complete:
+{{
+  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Complete task: buy milk"}},
+  "task": {{"action": "complete", "title": "Buy milk"}}
+}}
+Example - delete:
+{{
+  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Delete task: buy milk"}},
+  "task": {{"action": "delete", "title": "Buy milk"}}
 }}
 
 2. **calendar**: A specific event with a time/place.
@@ -90,7 +100,11 @@ Rules:
 - If it's a specific event with time, prefer 'calendar' over 'task'.
 - If the user asks a general knowledge question, opinion, or wants to chat — classify as "query". The bot can answer anything.
 - When the user asks about a company, person, product, or topic — classify as "query" with context_needed=["web"] so the bot searches for real info.
-- **CRITICAL — TASK CLASSIFICATION**: Only classify as "task" when the user EXPLICITLY asks to create a task, reminder, or to-do. Keywords: "תזכיר לי", "צור משימה", "הוסף תזכורת", "תרשום משימה", "remind me", "add task". If the user just MENTIONS something they need to do but doesn't ask to create a reminder — classify as "query" and let the conversation flow.
+- **CRITICAL — TASK CLASSIFICATION**: Only classify as "task" when the user EXPLICITLY asks to create, complete, or delete a task/reminder.
+  - Create keywords: "תזכיר לי", "צור משימה", "הוסף תזכורת", "תרשום משימה", "remind me", "add task"
+  - Complete keywords: "סיימתי", "עשיתי", "השלמתי", "completed", "done", "finished"
+  - Delete keywords: "מחק", "תמחק", "הסר", "delete", "remove"
+  - If the user just MENTIONS something but doesn't explicitly ask — classify as "query".
 - **CRITICAL**: For all dates and times (start_time, due_date), convert them to ABSOLUTE `YYYY-MM-DD HH:MM:SS` format based on the "Current Date/Time" provided. Do NOT return "tomorrow" or relative strings.
 - **CRITICAL**: When the user mentions a day name like "Wednesday" / "יום רביעי", calculate the actual date of THIS week's occurrence (or next week if that day has already passed). Use the "Day of week" provided above to calculate.
 - When in doubt between "task" and "query", prefer "query". The user will explicitly ask if they want a reminder.
