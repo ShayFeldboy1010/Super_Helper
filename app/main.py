@@ -35,17 +35,26 @@ async def _hand_off_to_processor(update_data: dict):
         # Extract chat info from the update
         msg = update_data.get("message", {})
         chat_id = msg.get("chat", {}).get("id")
+        user_id = msg.get("from", {}).get("id")
         text = msg.get("text")
 
         if not chat_id or not text:
-            # Non-text update (sticker, photo, etc.) — process directly
+            # Non-text update (sticker, photo, etc.) — process via dispatcher
             update = types.Update(**update_data)
             await dp.feed_update(bot, update)
+            return
+
+        # ID Guard — only respond to authorized user
+        if user_id != settings.TELEGRAM_USER_ID:
+            logger.warning(f"Unauthorized user {user_id}")
             return
 
         # Send "..." placeholder immediately
         status = await bot.send_message(chat_id=chat_id, text="...")
         status_msg_id = status.message_id
+
+        # Build base URL from WEBHOOK_URL
+        base_url = settings.WEBHOOK_URL.rsplit("/webhook", 1)[0]
 
         # Fire off to /api/process — a NEW Vercel function with its own 10s
         payload = {
@@ -55,11 +64,11 @@ async def _hand_off_to_processor(update_data: dict):
         async with httpx.AsyncClient(timeout=2) as client:
             try:
                 await client.post(
-                    f"{settings.WEBHOOK_URL.replace('/webhook', '')}/api/process",
+                    f"{base_url}/api/process",
                     json=payload,
                     headers={"X-Internal-Secret": settings.M_WEBHOOK_SECRET},
                 )
-            except httpx.TimeoutException:
+            except (httpx.TimeoutException, httpx.ConnectError):
                 pass  # Expected — we don't wait for the response
 
     except Exception as e:
