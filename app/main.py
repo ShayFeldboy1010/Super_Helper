@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Request
-from contextlib import asynccontextmanager
-from aiogram import Bot, Dispatcher, types
+from aiogram import types
 from app.core.config import settings
 import logging
 
@@ -21,33 +20,7 @@ dp.include_router(tasks.router)
 
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: Set Webhook
-    webhook_url = settings.WEBHOOK_URL
-    try:
-        print(f"Setting webhook to {webhook_url}...")
-        import asyncio
-        await asyncio.wait_for(
-            bot.set_webhook(
-                url=webhook_url,
-                secret_token=settings.M_WEBHOOK_SECRET,
-                drop_pending_updates=True
-            ),
-            timeout=5.0
-        )
-        logger.info(f"Webhook set to {webhook_url}")
-        print(f"Webhook set successfully.")
-    except Exception as e:
-        logger.error(f"Failed to set webhook (timeout/error): {e}")
-        print(f"Failed to set webhook (timeout/error): {e}")
-    
-    yield
-    # Shutdown: Remove Webhook
-    await bot.delete_webhook()
-    logger.info("Webhook removed")
-
-app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
+app = FastAPI(title=settings.PROJECT_NAME)
 app.include_router(auth.router)
 
 from app.bot.routers import cron
@@ -73,3 +46,16 @@ async def telegram_webhook(request: Request):
 @app.get("/")
 async def root():
     return {"message": "Telegram Command Center is running"}
+
+@app.get("/setup-webhook")
+async def setup_webhook():
+    """Manual one-time webhook setup. Call once after deploy, not on every boot."""
+    try:
+        await bot.set_webhook(
+            url=settings.WEBHOOK_URL,
+            secret_token=settings.M_WEBHOOK_SECRET,
+            drop_pending_updates=False,
+        )
+        return {"status": "ok", "webhook_url": settings.WEBHOOK_URL}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
