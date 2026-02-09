@@ -5,7 +5,7 @@ from app.core.database import supabase
 from app.services.google_svc import GoogleService
 from app.services.search_service import web_search, format_search_results
 from app.services.news_service import fetch_ai_news
-from app.services.market_service import fetch_market_data
+from app.services.market_service import fetch_market_data, fetch_symbols, extract_tickers_from_query
 from app.services.synergy_service import generate_synergy_insights
 from app.services.memory_service import get_relevant_insights
 from groq import AsyncGroq
@@ -118,8 +118,26 @@ class QueryService:
         # 7. Market Data (Yahoo Finance — real-time prices)
         if "market" in context_needed:
             try:
-                market = await fetch_market_data()
+                # Detect specific tickers the user asked about
+                specific_tickers = extract_tickers_from_query(query_text)
+                # Remove tickers already in the default watchlist to avoid duplicates
+                default_tickers = {"NVDA", "MSFT", "GOOGL", "META", "AAPL"}
+                extra_tickers = [t for t in specific_tickers if t not in default_tickers]
+
+                # Fetch default watchlist + any extra tickers in parallel
+                fetches = [fetch_market_data()]
+                if extra_tickers:
+                    fetches.append(fetch_symbols(extra_tickers))
+
+                results = await asyncio.gather(*fetches, return_exceptions=True)
+                market = results[0] if isinstance(results[0], dict) else {"indices": [], "tickers": []}
+                extra_data = results[1] if len(results) > 1 and isinstance(results[1], list) else []
+
                 lines = []
+                # Show specifically requested tickers first
+                for t in extra_data:
+                    arrow = "🟢" if t["change_pct"] >= 0 else "🔴"
+                    lines.append(f"{arrow} {t['name']}: ${t['price']:,.2f} ({t['change_pct']:+.1f}%)")
                 for idx in market.get("indices", []):
                     arrow = "🟢" if idx["change_pct"] >= 0 else "🔴"
                     lines.append(f"{arrow} {idx['name']}: {idx['price']:,.0f} ({idx['change_pct']:+.1f}%)")

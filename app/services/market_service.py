@@ -23,6 +23,61 @@ TICKER_NAMES = {
     "AAPL": "Apple",
 }
 
+# Map common company names to ticker symbols for query detection
+COMPANY_TO_TICKER = {
+    "amazon": "AMZN", "amzn": "AMZN",
+    "tesla": "TSLA", "tsla": "TSLA",
+    "netflix": "NFLX", "nflx": "NFLX",
+    "nvidia": "NVDA", "nvda": "NVDA",
+    "microsoft": "MSFT", "msft": "MSFT",
+    "google": "GOOGL", "googl": "GOOGL", "alphabet": "GOOGL",
+    "meta": "META", "facebook": "META",
+    "apple": "AAPL", "aapl": "AAPL",
+    "amd": "AMD",
+    "intel": "INTC", "intc": "INTC",
+    "palantir": "PLTR", "pltr": "PLTR",
+    "coinbase": "COIN", "coin": "COIN",
+    "snowflake": "SNOW", "snow": "SNOW",
+    "shopify": "SHOP", "shop": "SHOP",
+    "uber": "UBER",
+    "airbnb": "ABNB", "abnb": "ABNB",
+    "spotify": "SPOT", "spot": "SPOT",
+    "disney": "DIS", "dis": "DIS",
+    "salesforce": "CRM", "crm": "CRM",
+    "oracle": "ORCL", "orcl": "ORCL",
+    "ibm": "IBM",
+    "snap": "SNAP", "snapchat": "SNAP",
+    "twitter": "X", "x.com": "X",
+    "openai": "MSFT",  # closest publicly traded proxy
+    "broadcom": "AVGO", "avgo": "AVGO",
+    "arm": "ARM",
+    "crowdstrike": "CRWD", "crwd": "CRWD",
+    # Hebrew names
+    "אמזון": "AMZN", "טסלה": "TSLA", "אפל": "AAPL",
+    "גוגל": "GOOGL", "מיקרוסופט": "MSFT", "מטא": "META",
+    "נטפליקס": "NFLX", "אנבידיה": "NVDA", "פייסבוק": "META",
+    "אינטל": "INTC", "אובר": "UBER", "דיסני": "DIS",
+    "אורקל": "ORCL", "סנאפ": "SNAP", "ספוטיפיי": "SPOT",
+}
+
+
+def extract_tickers_from_query(query: str) -> list[str]:
+    """Detect ticker symbols and company names in a user query."""
+    query_lower = query.lower()
+    found = set()
+
+    # Check for $TICKER patterns
+    import re
+    for match in re.findall(r'\$([A-Za-z]{1,5})', query):
+        found.add(match.upper())
+
+    # Check for known company names / tickers
+    for name, ticker in COMPANY_TO_TICKER.items():
+        if name in query_lower:
+            found.add(ticker)
+
+    return list(found)
+
 
 async def _fetch_symbol(client: httpx.AsyncClient, symbol: str) -> dict | None:
     """Fetch price data for a single symbol from Yahoo Finance chart API."""
@@ -50,6 +105,18 @@ async def _fetch_symbol(client: httpx.AsyncClient, symbol: str) -> dict | None:
     except Exception as e:
         logger.error(f"Failed to fetch {symbol}: {e}")
         return None
+
+
+async def fetch_symbols(symbols: list[str]) -> list[dict]:
+    """Fetch price data for specific ticker symbols."""
+    if not symbols:
+        return []
+    async with httpx.AsyncClient(timeout=10) as client:
+        results = await asyncio.gather(
+            *[_fetch_symbol(client, s) for s in symbols],
+            return_exceptions=True,
+        )
+    return [r for r in results if isinstance(r, dict)]
 
 
 async def fetch_market_data() -> dict:
