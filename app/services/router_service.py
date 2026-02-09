@@ -90,7 +90,7 @@ context_needed options: "calendar", "tasks", "archive", "email", "web"
 - Use "calendar" for schedule/events questions.
 - Use "tasks" for to-do related questions.
 - Use "archive" for saved notes or previously stored knowledge.
-- Use "web" when the user asks about current events, factual questions, searches, "what is X", "find me Y", or anything that needs up-to-date information from the internet.
+- Use "web" when the user asks about current events, factual questions, searches, "what is X", "find me Y", stocks, market, companies, prices, or anything that needs up-to-date information from the internet.
 - Use [] (empty) for casual chat, opinions, ideas, advice, greetings — things that don't need external data.
 
 target_date: When the user asks about a SPECIFIC day (e.g. "Wednesday", "next Sunday", "February 15th"), compute the exact YYYY-MM-DD date based on Current Date/Time and set it as target_date. If the user says a day name without "next" or "last", assume THIS COMING occurrence (the nearest future one). If asking about "today", set target_date to null.
