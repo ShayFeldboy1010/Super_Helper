@@ -56,7 +56,7 @@ async def web_search(query: str, max_results: int = 5) -> list[dict]:
 def format_search_results(results: list[dict]) -> str:
     """Format search results as context string for LLM."""
     if not results:
-        return "לא נמצאו תוצאות חיפוש."
+        return "No search results found."
     lines = []
     for i, r in enumerate(results, 1):
         lines.append(f"{i}. {r['title']}\n   {r['snippet']}\n   {r['url']}")

@@ -48,21 +48,21 @@ async def fetch_url_content(url: str) -> dict:
 async def summarize_and_tag(url: str, title: str, content: str) -> dict:
     """Use Groq LLM to summarize content and generate tags."""
     if not content:
-        return {"summary": "לא הצלחתי לחלץ תוכן מהקישור.", "tags": [], "key_points": []}
+        return {"summary": "Couldn't extract content from the link.", "tags": [], "key_points": []}
 
     try:
         prompt = (
-            "אתה מנתח תוכן. קיבלת כתבה/דף מהאינטרנט.\n"
-            "החזר JSON עם:\n"
-            '- "summary": סיכום בעברית (2-3 משפטים)\n'
-            '- "tags": רשימת תגיות באנגלית (3-5 תגיות רלוונטיות)\n'
-            '- "key_points": 2-3 נקודות מפתח בעברית\n\n'
-            f"כותרת: {title}\nURL: {url}\n\nתוכן:\n{content}"
+            "You are a content analyst. You received an article/page from the web.\n"
+            "Return JSON with:\n"
+            '- "summary": summary in English (2-3 sentences)\n'
+            '- "tags": list of English tags (3-5 relevant tags)\n'
+            '- "key_points": 2-3 key points in English\n\n'
+            f"Title: {title}\nURL: {url}\n\nContent:\n{content}"
         )
 
         chat_completion = await client.chat.completions.create(
             messages=[
-                {"role": "system", "content": CHIEF_OF_STAFF_IDENTITY + "\n\nאתה מנתח תוכן. החזר רק JSON תקין."},
+                {"role": "system", "content": CHIEF_OF_STAFF_IDENTITY + "\n\nYou are a content analyst. Return only valid JSON."},
                 {"role": "user", "content": prompt},
             ],
             model="moonshotai/kimi-k2-instruct-0905",
@@ -79,4 +79,4 @@ async def summarize_and_tag(url: str, title: str, content: str) -> dict:
         }
     except Exception as e:
         logger.error(f"LLM summarization error: {e}")
-        return {"summary": f"שמרתי את הקישור: {title}", "tags": [], "key_points": []}
+        return {"summary": f"Saved the link: {title}", "tags": [], "key_points": []}

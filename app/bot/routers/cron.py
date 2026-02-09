@@ -30,12 +30,12 @@ async def check_reminders():
     for task in tasks:
         try:
             msg = (
-                f"🚨 **Nag Alert!** 🚨\n"
-                f"You missed: **{task['title']}**\n"
+                f"🚨 Nag Alert!\n"
+                f"You missed: {task['title']}\n"
                 f"Due: {task.get('due_at')}\n\n"
                 f"Get it done! 💪"
             )
-            await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
+            await bot.send_message(chat_id=user_id, text=msg)
         except Exception as e:
             logger.error(f"Failed to send alert for task {task.get('id')}: {e}")
 
@@ -51,7 +51,7 @@ async def daily_brief():
 
         # Split if exceeds Telegram 4096 char limit
         if len(msg) <= 4096:
-            await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
+            await bot.send_message(chat_id=user_id, text=msg)
         else:
             # Send in chunks at line breaks
             chunks = []
@@ -66,10 +66,7 @@ async def daily_brief():
                 chunks.append(current)
 
             for chunk in chunks:
-                try:
-                    await bot.send_message(chat_id=user_id, text=chunk, parse_mode="Markdown")
-                except Exception:
-                    await bot.send_message(chat_id=user_id, text=chunk)
+                await bot.send_message(chat_id=user_id, text=chunk)
 
         return {"status": "ok", "message": "Enhanced briefing sent"}
 
@@ -84,19 +81,16 @@ async def daily_brief():
         calendar_str = "\n".join(calendar_lines)
 
         tasks = await get_pending_tasks(user_id)
-        task_str = "אין משימות פתוחות."
+        task_str = "No open tasks."
         if tasks:
             task_str = "\n".join([f"• {t['title']}" for t in tasks])
 
         msg = (
-            f"☀️ *תדריך בוקר*\n\n"
-            f"📅 *יומן:*\n{calendar_str}\n\n"
-            f"✅ *משימות:*\n{task_str}"
+            f"Morning Briefing\n\n"
+            f"📅 Calendar:\n{calendar_str}\n\n"
+            f"✅ Tasks:\n{task_str}"
         )
-        try:
-            await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
-        except Exception:
-            await bot.send_message(chat_id=user_id, text=msg)
+        await bot.send_message(chat_id=user_id, text=msg)
         return {"status": "ok", "message": "Basic briefing sent (fallback)"}
 
 
@@ -122,10 +116,7 @@ async def heartbeat():
         if not msg:
             return {"status": "ok", "message": "Nothing to report"}
 
-        try:
-            await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
-        except Exception:
-            await bot.send_message(chat_id=user_id, text=msg)
+        await bot.send_message(chat_id=user_id, text=msg)
 
         return {"status": "ok", "message": "Heartbeat sent"}
 
@@ -146,10 +137,7 @@ async def weekly_review():
         if not msg:
             return {"status": "ok", "message": "No review generated"}
 
-        try:
-            await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
-        except Exception:
-            await bot.send_message(chat_id=user_id, text=msg)
+        await bot.send_message(chat_id=user_id, text=msg)
 
         return {"status": "ok", "message": "Weekly review sent"}
 
@@ -168,12 +156,12 @@ async def daily_reflection():
     if result["new_insights"] > 0 or result["reinforced_insights"] > 0:
         try:
             msg = (
-                f"🧠 *סיכום רפלקציה יומית*\n"
-                f"אינטראקציות שנותחו: {result['interactions_analyzed']}\n"
-                f"תובנות חדשות: {result['new_insights']}\n"
-                f"תובנות שחוזקו: {result['reinforced_insights']}"
+                f"🧠 Daily Reflection Summary\n"
+                f"Interactions analyzed: {result['interactions_analyzed']}\n"
+                f"New insights: {result['new_insights']}\n"
+                f"Reinforced insights: {result['reinforced_insights']}"
             )
-            await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
+            await bot.send_message(chat_id=user_id, text=msg)
         except Exception as e:
             logger.error(f"Failed to send reflection summary: {e}")
 

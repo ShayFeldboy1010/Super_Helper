@@ -67,10 +67,28 @@ Example - asking about emails:
   "query": {{"query": "Do I have any new emails?", "context_needed": ["email"], "target_date": null}}
 }}
 
+Example - asking about AI news / developments:
+{{
+  "classification": {{"action_type": "query", "confidence": 0.9, "summary": "Check latest AI news"}},
+  "query": {{"query": "What's new in the AI world today?", "context_needed": ["news"], "target_date": null}}
+}}
+
+Example - asking about stocks / market:
+{{
+  "classification": {{"action_type": "query", "confidence": 0.9, "summary": "Check stock market status"}},
+  "query": {{"query": "How is NVDA doing today?", "context_needed": ["market"], "target_date": null}}
+}}
+
 Example - web search / general knowledge question:
 {{
-  "classification": {{"action_type": "query", "confidence": 0.9, "summary": "Search for latest AI news"}},
+  "classification": {{"action_type": "query", "confidence": 0.9, "summary": "Search about autonomous driving"}},
   "query": {{"query": "What are the latest developments in autonomous driving?", "context_needed": ["web"], "target_date": null}}
+}}
+
+Example - AI-market opportunities / synergy:
+{{
+  "classification": {{"action_type": "query", "confidence": 0.9, "summary": "Looking for AI-market business opportunities"}},
+  "query": {{"query": "Any interesting AI-market connections or opportunities today?", "context_needed": ["synergy"], "target_date": null}}
 }}
 
 Example - casual conversation or opinion:
@@ -85,12 +103,15 @@ Example - asking for advice/ideas:
   "query": {{"query": "Give me ideas for a side project", "context_needed": [], "target_date": null}}
 }}
 
-context_needed options: "calendar", "tasks", "archive", "email", "web"
+context_needed options: "calendar", "tasks", "archive", "email", "web", "synergy", "news", "market"
 - Use "email" when the user asks about emails, inbox, or messages.
 - Use "calendar" for schedule/events questions.
 - Use "tasks" for to-do related questions.
 - Use "archive" for saved notes or previously stored knowledge.
-- Use "web" when the user asks about current events, factual questions, searches, "what is X", "find me Y", stocks, market, companies, prices, or anything that needs up-to-date information from the internet.
+- Use "news" when the user asks about AI news, AI developments, "what's new in AI", "חדשות AI", tech news, or any AI/tech industry updates.
+- Use "market" when the user asks about stocks, stock prices, market status, NVDA, tickers, indices, "how is the market", "מניות", or any financial market data.
+- Use "web" for general knowledge questions, searches, "what is X", "find me Y", or anything else that needs up-to-date information from the internet (NOT for AI news or stocks — use "news" and "market" for those).
+- Use "synergy" when the user asks about AI-market opportunities, business ideas from current trends, "what's hot", "any opportunities", "market connections", "what should I build", or anything connecting AI developments with market/business opportunities.
 - Use [] (empty) for casual chat, opinions, ideas, advice, greetings — things that don't need external data.
 
 target_date: When the user asks about a SPECIFIC day (e.g. "Wednesday", "next Sunday", "February 15th"), compute the exact YYYY-MM-DD date based on Current Date/Time and set it as target_date. If the user says a day name without "next" or "last", assume THIS COMING occurrence (the nearest future one). If asking about "today", set target_date to null.

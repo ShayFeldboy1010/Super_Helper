@@ -104,17 +104,17 @@ async def get_relevant_insights(
         return ""
 
 
-REFLECTION_PROMPT = """אתה מנתח אינטראקציות בין משתמש לעוזר אישי.
-מטרתך: לחלץ עובדות קבועות, העדפות, הרגלים ומידע חשוב על המשתמש.
+REFLECTION_PROMPT = """You analyze interactions between a user and a personal assistant.
+Your goal: extract permanent facts, preferences, habits, and important information about the user.
 
-חוקים:
-- חלץ רק מידע שהוא עובדתי וקבוע (לא חד-פעמי)
-- כל תובנה צריכה להיות משפט קצר וברור
-- קטגוריות אפשריות: goal, habit, work, preference, health, relationship, finance
-- אל תחזור על תובנות שכבר קיימות ברשימת "תובנות קיימות"
-- אם אינטראקציה מחזקת תובנה קיימת, ציין זאת
+Rules:
+- Only extract information that is factual and permanent (not one-time)
+- Each insight should be a short, clear sentence
+- Possible categories: goal, habit, work, preference, health, relationship, finance
+- Do not repeat insights that already exist in the "existing insights" list
+- If an interaction reinforces an existing insight, note it
 
-החזר JSON בפורמט:
+Return JSON in this format:
 {
   "new_insights": [
     {"category": "...", "insight": "...", "source_summary": "..."}
@@ -124,7 +124,7 @@ REFLECTION_PROMPT = """אתה מנתח אינטראקציות בין משתמש 
   ]
 }
 
-אם אין תובנות חדשות, החזר רשימות ריקות."""
+If there are no new insights, return empty lists."""
 
 
 async def run_daily_reflection(user_id: int) -> dict:
@@ -173,8 +173,8 @@ async def run_daily_reflection(user_id: int) -> dict:
         interaction_block = "\n---\n".join(interaction_lines)
 
         user_prompt = (
-            f"תובנות קיימות:\n{existing_text or 'אין עדיין'}\n\n"
-            f"אינטראקציות חדשות:\n{interaction_block}"
+            f"Existing insights:\n{existing_text or 'None yet'}\n\n"
+            f"New interactions:\n{interaction_block}"
         )
 
         # 4. Call LLM

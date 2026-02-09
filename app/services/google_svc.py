@@ -61,7 +61,7 @@ class GoogleService:
         """
         if not self.creds:
             if not await self.authenticate():
-                return ["⚠️ אנא חבר את חשבון Google שלך קודם."]
+                return ["⚠️ Please connect your Google account first."]
 
         try:
             from zoneinfo import ZoneInfo
@@ -92,7 +92,7 @@ class GoogleService:
             events = events_result.get('items', [])
 
             if not events:
-                return ["אין אירועים."]
+                return ["No events."]
 
             summary_lines = []
             for event in events:
@@ -108,7 +108,7 @@ class GoogleService:
 
         except Exception as e:
             logger.error(f"Calendar API error: {e}")
-            return [f"❌ שגיאה בשליפת לוח שנה: {str(e)}"]
+            return [f"❌ Calendar error: {str(e)}"]
 
     async def get_todays_events_detailed(self) -> List[Dict[str, Any]]:
         """Fetch today's events as structured dicts for conflict detection."""
@@ -140,7 +140,7 @@ class GoogleService:
                 start_raw = event['start'].get('dateTime', event['start'].get('date'))
                 end_raw = event['end'].get('dateTime', event['end'].get('date'))
                 detailed.append({
-                    "summary": event.get('summary', '(ללא כותרת)'),
+                    "summary": event.get('summary', '(no title)'),
                     "start": start_raw,
                     "end": end_raw,
                     "location": event.get('location', ''),

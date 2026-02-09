@@ -44,20 +44,20 @@ async def generate_weekly_review(user_id: int) -> str | None:
             [f"- [{ix['action_type']}] {ix['intent_summary'] or ix['user_message'][:50]}"
              for ix in interactions[:20]]
         )
-        pending_str = "\n".join([f"- {t['title']}" for t in pending]) if pending else "אין"
-        overdue_str = "\n".join([f"- {t['title']}" for t in overdue]) if overdue else "אין"
+        pending_str = "\n".join([f"- {t['title']}" for t in pending]) if pending else "None"
+        overdue_str = "\n".join([f"- {t['title']}" for t in overdue]) if overdue else "None"
 
         prompt = (
-            f"הנה סיכום השבוע של שי:\n\n"
-            f"אינטראקציות השבוע ({len(interactions)}):\n{interaction_summary}\n\n"
-            f"משימות פתוחות:\n{pending_str}\n\n"
-            f"משימות שעבר זמנן:\n{overdue_str}\n\n"
-            f"תובנות קיימות:\n{insights or 'אין עדיין'}\n\n"
-            f"כתוב סיכום שבועי קצר לשי. כולל:\n"
-            f"1. מה בלט השבוע (מתוך האינטראקציות)\n"
-            f"2. מה נשאר פתוח וצריך תשומת לב\n"
-            f"3. 2-3 המלצות לשבוע הקרוב\n"
-            f"תהיה ישיר, אישי, כמו חבר טוב שמכיר אותו."
+            f"Here's Shay's weekly summary:\n\n"
+            f"This week's interactions ({len(interactions)}):\n{interaction_summary}\n\n"
+            f"Open tasks:\n{pending_str}\n\n"
+            f"Overdue tasks:\n{overdue_str}\n\n"
+            f"Existing insights:\n{insights or 'None yet'}\n\n"
+            f"Write a short weekly review for Shay. Include:\n"
+            f"1. What stood out this week (from the interactions)\n"
+            f"2. What's still open and needs attention\n"
+            f"3. 2-3 recommendations for the coming week\n"
+            f"Be direct, personal, like a good friend who knows him."
         )
 
         chat = await client.chat.completions.create(
@@ -94,22 +94,22 @@ async def generate_goal_checkin(user_id: int) -> str | None:
         insights = await get_relevant_insights(user_id, "task")
 
         pending_str = "\n".join(
-            [f"- {t['title']} (עדיפות: {t.get('priority', 0)}, עד: {t.get('due_at', 'ללא')})"
+            [f"- {t['title']} (priority: {t.get('priority', 0)}, due: {t.get('due_at', 'none')})"
              for t in pending]
         )
-        overdue_str = "\n".join([f"- ⚠️ {t['title']} (היה עד: {t.get('due_at')})" for t in overdue]) if overdue else "אין — כל הכבוד"
-        events_str = "\n".join(events) if events else "יומן פנוי"
+        overdue_str = "\n".join([f"- ⚠️ {t['title']} (was due: {t.get('due_at')})" for t in overdue]) if overdue else "None — nice work"
+        events_str = "\n".join(events) if events else "Calendar is clear"
 
         prompt = (
-            f"זה צ'ק-אין אמצע שבוע לשי.\n\n"
-            f"משימות פתוחות:\n{pending_str}\n\n"
-            f"משימות שעבר זמנן:\n{overdue_str}\n\n"
-            f"יומן היום:\n{events_str}\n\n"
-            f"תובנות:\n{insights or 'אין'}\n\n"
-            f"כתוב הודעה קצרה וישירה — נאדג' ידידותי.\n"
-            f"אם יש משימות שעבר זמנן — תזכיר בעדינות אבל בבירור.\n"
-            f"אם הכל בסדר — מילה טובה קצרה.\n"
-            f"תהיה כמו חבר שאכפת לו, לא כמו אפליקציה."
+            f"Mid-week check-in for Shay.\n\n"
+            f"Open tasks:\n{pending_str}\n\n"
+            f"Overdue tasks:\n{overdue_str}\n\n"
+            f"Today's calendar:\n{events_str}\n\n"
+            f"Insights:\n{insights or 'None'}\n\n"
+            f"Write a short, direct message — a friendly nudge.\n"
+            f"If there are overdue tasks — remind gently but clearly.\n"
+            f"If everything's on track — a quick good word.\n"
+            f"Be like a friend who cares, not like an app."
         )
 
         chat = await client.chat.completions.create(
@@ -161,18 +161,18 @@ async def generate_evening_wrapup(user_id: int) -> str | None:
 
         today_summary = "\n".join(
             [f"- {ix.get('intent_summary') or ix['user_message'][:40]}" for ix in todays]
-        ) if todays else "יום שקט"
-        tomorrow_str = "\n".join(tomorrow_events) if tomorrow_events else "יומן פנוי"
-        overdue_str = "\n".join([f"- {t['title']}" for t in overdue]) if overdue else "אין"
+        ) if todays else "Quiet day"
+        tomorrow_str = "\n".join(tomorrow_events) if tomorrow_events else "Calendar is clear"
+        overdue_str = "\n".join([f"- {t['title']}" for t in overdue]) if overdue else "None"
 
         prompt = (
-            f"סיכום ערב לשי (עכשיו {now.strftime('%H:%M')}):\n\n"
-            f"מה היה היום ({len(todays)} אינטראקציות):\n{today_summary}\n\n"
-            f"מחר ביומן:\n{tomorrow_str}\n\n"
-            f"דברים שנשארו פתוחים:\n{overdue_str}\n\n"
-            f"כתוב הודעת ערב קצרה — סיכום + הצצה למחר.\n"
-            f"אם יש משהו קריטי למחר, הדגש אותו.\n"
-            f"טון: רגוע, ישיר, כמו חבר שעושה סינכרון בסוף היום."
+            f"Evening wrap-up for Shay (now {now.strftime('%H:%M')}):\n\n"
+            f"What happened today ({len(todays)} interactions):\n{today_summary}\n\n"
+            f"Tomorrow's calendar:\n{tomorrow_str}\n\n"
+            f"Things still open:\n{overdue_str}\n\n"
+            f"Write a short evening message — recap + preview of tomorrow.\n"
+            f"If there's something critical tomorrow, highlight it.\n"
+            f"Tone: calm, direct, like a friend syncing at end of day."
         )
 
         chat = await client.chat.completions.create(

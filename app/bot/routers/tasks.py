@@ -164,7 +164,7 @@ async def handle_calendar(message: types.Message, intent, status_msg) -> str | N
 
     if link:
         text = (
-            f"נקבע: {event_data.summary}\n"
+            f"Scheduled: {event_data.summary}\n"
             f"{start_dt.strftime('%d/%m %H:%M')}\n"
             f"{link}"
         )
@@ -187,7 +187,7 @@ async def handle_note(message: types.Message, intent, status_msg) -> str | None:
 
     if saved_note:
         tags_str = " ".join([f"#{t}" for t in note_data.tags])
-        text = f"נשמר: {note_data.content}\n{tags_str}"
+        text = f"Saved: {note_data.content}\n{tags_str}"
         await safe_edit(status_msg, text)
         return text
     else:
@@ -221,7 +221,7 @@ async def handle_url_save(message: types.Message, urls: list[str], status_msg) -
             await save_url_knowledge(
                 user_id=message.from_user.id,
                 url=url, title=url, content="",
-                summary=f"קישור שנשמר: {url}", tags=[], key_points=[],
+                summary=f"Saved link: {url}", tags=[], key_points=[],
             )
             await safe_edit(status_msg, text)
             return text

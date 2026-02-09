@@ -10,6 +10,8 @@ from app.services.google_svc import GoogleService
 from app.services.task_service import get_pending_tasks
 from app.services.news_service import fetch_ai_news
 from app.services.market_service import fetch_market_data
+from app.services.synergy_service import generate_synergy_insights
+from app.services.memory_service import get_relevant_insights
 
 logger = logging.getLogger(__name__)
 client = AsyncGroq(api_key=settings.GROQ_API_KEY)
@@ -33,15 +35,15 @@ def detect_conflicts(events: list[dict]) -> list[str]:
             a, b = timed[i], timed[j]
             if a["start"] < b["end"] and b["start"] < a["end"]:
                 conflicts.append(
-                    f"⚠️ חפיפה: \"{a['summary']}\" ({a['start'].strftime('%H:%M')}-{a['end'].strftime('%H:%M')}) "
-                    f"עם \"{b['summary']}\" ({b['start'].strftime('%H:%M')}-{b['end'].strftime('%H:%M')})"
+                    f"⚠️ Conflict: \"{a['summary']}\" ({a['start'].strftime('%H:%M')}-{a['end'].strftime('%H:%M')}) "
+                    f"overlaps with \"{b['summary']}\" ({b['start'].strftime('%H:%M')}-{b['end'].strftime('%H:%M')})"
                 )
     return conflicts
 
 
 def _format_events_context(events: list[dict]) -> str:
     if not events:
-        return "אין אירועים היום."
+        return "No events today."
     lines = []
     for ev in events:
         start = ev.get("start", "")
@@ -58,7 +60,7 @@ def _format_events_context(events: list[dict]) -> str:
 
 def _format_news_context(news: list[dict]) -> str:
     if not news:
-        return "אין חדשות AI חדשות."
+        return "No new AI news."
     lines = [f"• {n['title']} ({n['source']})" for n in news[:5]]
     return "\n".join(lines)
 
@@ -71,15 +73,15 @@ def _format_market_context(market: dict) -> str:
     for t in market.get("tickers", []):
         arrow = "🟢" if t["change_pct"] >= 0 else "🔴"
         lines.append(f"{arrow} {t['name']}: ${t['price']:,.2f} ({t['change_pct']:+.1f}%)")
-    return "\n".join(lines) if lines else "אין נתוני שוק."
+    return "\n".join(lines) if lines else "No market data available."
 
 
 def _format_tasks_context(tasks: list[dict]) -> str:
     if not tasks:
-        return "אין משימות פתוחות."
+        return "No open tasks."
     lines = []
     for t in tasks[:7]:
-        due = f" (עד: {t.get('due_at', 'ללא')})" if t.get("due_at") else ""
+        due = f" (due: {t.get('due_at', 'none')})" if t.get("due_at") else ""
         lines.append(f"• {t['title']}{due}")
     return "\n".join(lines)
 
@@ -120,34 +122,52 @@ async def generate_morning_briefing(user_id: int) -> str:
 
     # Detect calendar conflicts
     conflicts = detect_conflicts(events) if events else []
-    conflicts_str = "\n".join(conflicts) if conflicts else "אין חפיפות."
+    conflicts_str = "\n".join(conflicts) if conflicts else "No conflicts."
 
     # Format email context
     email_lines = []
     for e in (emails or []):
-        email_lines.append(f"• מאת: {e['from']} | נושא: {e['subject']}")
-    emails_str = "\n".join(email_lines) if email_lines else "אין אימיילים חדשים."
+        email_lines.append(f"• From: {e['from']} | Subject: {e['subject']}")
+    emails_str = "\n".join(email_lines) if email_lines else "No new emails."
+
+    # Generate synergy insights (uses already-fetched news + market)
+    try:
+        user_insights = await get_relevant_insights(user_id, action_type="query")
+    except Exception as e:
+        logger.error(f"User insights fetch failed: {e}")
+        user_insights = ""
+
+    try:
+        synergy_insights = await generate_synergy_insights(
+            news if isinstance(news, list) else [],
+            market if isinstance(market, dict) else {"indices": [], "tickers": []},
+            user_insights,
+        )
+    except Exception as e:
+        logger.error(f"Synergy generation failed: {e}")
+        synergy_insights = ""
 
     # Build context for LLM
     context = (
-        f"📅 אירועים היום:\n{_format_events_context(events)}\n\n"
-        f"⚠️ חפיפות:\n{conflicts_str}\n\n"
-        f"📧 אימיילים אחרונים:\n{emails_str}\n\n"
-        f"🤖 חדשות AI:\n{_format_news_context(news)}\n\n"
-        f"📊 שוק:\n{_format_market_context(market)}\n\n"
-        f"✅ משימות פתוחות:\n{_format_tasks_context(tasks)}"
+        f"📅 Today's Events:\n{_format_events_context(events)}\n\n"
+        f"⚠️ Conflicts:\n{conflicts_str}\n\n"
+        f"📧 Recent Emails:\n{emails_str}\n\n"
+        f"🤖 AI News:\n{_format_news_context(news)}\n\n"
+        f"📊 Market:\n{_format_market_context(market)}\n\n"
+        f"💡 Market-AI Synergy:\n{synergy_insights}\n\n"
+        f"✅ Open Tasks:\n{_format_tasks_context(tasks)}"
     )
 
     briefing_instructions = (
-        "\n\n═══ הנחיות תדריך בוקר ═══\n"
-        "בנה תדריך בוקר חד וממוקד כהודעת טלגרם.\n"
-        "בנה את התדריך בסעיפים הבאים (השתמש באימוג'ים ככותרות):\n"
-        "1. 📋 אג'נדה טקטית — לוח זמנים, חפיפות, אימיילים קריטיים\n"
-        "2. 🤖 מודיעין AI — 2-3 התפתחויות מפתח\n"
-        "3. 📊 אלפא שוק — מדדים ומניות בולטות\n"
-        "4. 🎯 מהלך אקטיבי — רעיון אחד לפרויקט/מוצר בהתבסס על החדשות\n"
-        "5. ✅ משימות חכמות — 2-3 משימות מומלצות מהמשימות הפתוחות\n\n"
-        "אם אין מידע לסעיף מסוים, דלג עליו. אל תמציא מידע."
+        "\n\n=== Morning Briefing Instructions ===\n"
+        "Build a sharp, focused morning briefing as a Telegram message.\n"
+        "Structure the briefing into these sections (use emojis as headers):\n"
+        "1. 📋 Tactical Agenda — schedule, conflicts, critical emails\n"
+        "2. 🤖 AI Intelligence — 2-3 key developments\n"
+        "3. 📊 Market Alpha — indices and notable tickers\n"
+        "4. 💡 Market-AI Synergy — use the synergy insights provided, they are already analyzed. Present them directly, do not re-analyze.\n"
+        "5. ✅ Smart Tasks — 2-3 recommended tasks from open items\n\n"
+        "If there's no data for a section, skip it. Do not make up information."
     )
     system_prompt = CHIEF_OF_STAFF_IDENTITY + briefing_instructions
 
@@ -155,7 +175,7 @@ async def generate_morning_briefing(user_id: int) -> str:
         chat_completion = await client.chat.completions.create(
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"הנה הנתונים לתדריך הבוקר:\n\n{context}"},
+                {"role": "user", "content": f"Here's the data for the morning briefing:\n\n{context}"},
             ],
             model="moonshotai/kimi-k2-instruct-0905",
             temperature=0.7,
@@ -165,9 +185,9 @@ async def generate_morning_briefing(user_id: int) -> str:
         logger.error(f"Briefing LLM error: {e}")
         # Fallback: return raw formatted data
         return (
-            f"☀️ *תדריך בוקר*\n\n"
-            f"📅 *יומן:*\n{_format_events_context(events)}\n\n"
+            f"Morning Briefing\n\n"
+            f"📅 Calendar:\n{_format_events_context(events)}\n\n"
             f"{''.join(c + chr(10) for c in conflicts)}"
-            f"📧 *אימיילים:*\n{emails_str}\n\n"
-            f"✅ *משימות:*\n{_format_tasks_context(tasks)}"
+            f"📧 Emails:\n{emails_str}\n\n"
+            f"✅ Tasks:\n{_format_tasks_context(tasks)}"
         )
