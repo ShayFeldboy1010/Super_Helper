@@ -179,18 +179,30 @@ async def process_message(request: Request):
             action = getattr(intent.task, 'action', 'create')
             if action == "complete":
                 result = await complete_task(user_id, intent.task.title)
-                bot_response = f"Done: {result['title']}" if result else f"Couldn't find a matching task for \"{intent.task.title}\""
+                if result:
+                    bot_response = f"Done, marked as completed: {result['title']} ✅"
+                else:
+                    bot_response = f"Can't find \"{intent.task.title}\" in your open tasks. Maybe it's already done?"
             elif action == "delete":
                 result = await delete_task(user_id, intent.task.title)
-                bot_response = f"Deleted: {result['title']}" if result else f"Couldn't find a matching task for \"{intent.task.title}\""
+                if result:
+                    bot_response = f"Removed: {result['title']} 🗑"
+                else:
+                    bot_response = f"Can't find \"{intent.task.title}\" in your open tasks."
             else:
                 task_data = intent.task.model_dump()
                 task = await create_task(user_id, task_data)
                 if task:
-                    due_str = f"\nDue: {task.get('due_at')}" if task.get('due_at') else ""
-                    bot_response = f"Task created: {task['title']}{due_str}"
+                    due_str = ""
+                    if task.get('due_at'):
+                        try:
+                            dt = datetime.fromisoformat(task['due_at'])
+                            due_str = f"\n📅 {dt.strftime('%a %b %d, %H:%M')}"
+                        except (ValueError, TypeError):
+                            due_str = f"\n📅 {task['due_at']}"
+                    bot_response = f"Got it: {task['title']}{due_str}"
                 else:
-                    bot_response = "Failed to create task."
+                    bot_response = "Something went wrong saving the task. Try again?"
 
         elif action_type == "calendar" and intent.calendar:
             google = GoogleService(user_id)

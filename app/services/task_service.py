@@ -77,6 +77,30 @@ async def create_task(user_id: int, task_data):
         logger.error(f"Supabase error: {e}")
         return None
 
+def _match_task(tasks: list[dict], title_query: str) -> dict | None:
+    """Find best matching task by title. Tries exact substring, then word overlap."""
+    query_lower = title_query.lower()
+
+    # Tier 1: exact substring match
+    for t in tasks:
+        title_lower = t["title"].lower()
+        if query_lower in title_lower or title_lower in query_lower:
+            return t
+
+    # Tier 2: word overlap (2+ words or single-word title)
+    query_words = {w for w in query_lower.split() if len(w) > 1}
+    best_match = None
+    best_overlap = 0
+    for t in tasks:
+        title_words = {w for w in t["title"].lower().split() if len(w) > 1}
+        overlap = len(query_words & title_words)
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_match = t
+
+    return best_match if best_overlap > 0 else None
+
+
 async def complete_task(user_id: int, title_query: str) -> dict | None:
     """Find a pending task by title match and mark it as completed."""
     try:
@@ -89,30 +113,22 @@ async def complete_task(user_id: int, title_query: str) -> dict | None:
         )
         tasks = resp.data or []
         if not tasks:
+            logger.info(f"No pending tasks found for user {user_id}")
             return None
 
-        # Find best match (case-insensitive substring)
-        query_lower = title_query.lower()
-        match = None
-        for t in tasks:
-            if query_lower in t["title"].lower() or t["title"].lower() in query_lower:
-                match = t
-                break
-
+        match = _match_task(tasks, title_query)
         if not match:
-            # Try looser match — any word overlap
-            query_words = set(query_lower.split())
-            for t in tasks:
-                title_words = set(t["title"].lower().split())
-                if query_words & title_words:
-                    match = t
-                    break
-
-        if not match:
+            logger.info(f"No task matched '{title_query}' from {len(tasks)} pending tasks")
             return None
 
-        supabase.table("tasks").update({"status": "completed"}).eq("id", match["id"]).execute()
-        return match
+        # Update and verify
+        update_resp = supabase.table("tasks").update({"status": "completed"}).eq("id", match["id"]).execute()
+        if update_resp.data:
+            logger.info(f"Task completed: {match['title']} (id={match['id']})")
+            return match
+        else:
+            logger.error(f"Task update returned no data for id={match['id']}")
+            return None
 
     except Exception as e:
         logger.error(f"Error completing task: {e}")
@@ -133,26 +149,19 @@ async def delete_task(user_id: int, title_query: str) -> dict | None:
         if not tasks:
             return None
 
-        query_lower = title_query.lower()
-        match = None
-        for t in tasks:
-            if query_lower in t["title"].lower() or t["title"].lower() in query_lower:
-                match = t
-                break
-
+        match = _match_task(tasks, title_query)
         if not match:
-            query_words = set(query_lower.split())
-            for t in tasks:
-                title_words = set(t["title"].lower().split())
-                if query_words & title_words:
-                    match = t
-                    break
-
-        if not match:
+            logger.info(f"No task matched '{title_query}' for delete")
             return None
 
-        supabase.table("tasks").delete().eq("id", match["id"]).execute()
-        return match
+        # Delete and verify
+        del_resp = supabase.table("tasks").delete().eq("id", match["id"]).execute()
+        if del_resp.data:
+            logger.info(f"Task deleted: {match['title']} (id={match['id']})")
+            return match
+        else:
+            logger.error(f"Task delete returned no data for id={match['id']}")
+            return None
 
     except Exception as e:
         logger.error(f"Error deleting task: {e}")

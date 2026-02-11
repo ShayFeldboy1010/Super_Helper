@@ -29,11 +29,18 @@ async def check_reminders():
 
     for task in tasks:
         try:
+            due_str = ""
+            if task.get('due_at'):
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(task['due_at'])
+                    due_str = f"\nWas due: {dt.strftime('%a %b %d, %H:%M')}"
+                except (ValueError, TypeError):
+                    due_str = f"\nWas due: {task['due_at']}"
             msg = (
-                f"🚨 Nag Alert!\n"
-                f"You missed: {task['title']}\n"
-                f"Due: {task.get('due_at')}\n\n"
-                f"Get it done! 💪"
+                f"🚨 Hey, you still haven't done this:\n"
+                f"{task['title']}{due_str}\n\n"
+                f"Get it done or tell me to drop it 💪"
             )
             await bot.send_message(chat_id=user_id, text=msg)
         except Exception as e:
