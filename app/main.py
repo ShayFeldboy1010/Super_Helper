@@ -126,7 +126,7 @@ async def process_message(request: Request):
         from app.services.query_service import QueryService
         from app.services.url_service import extract_urls, fetch_url_content, summarize_and_tag
         from app.services.archive_service import save_url_knowledge
-        from app.services.task_service import create_task, complete_task, delete_task
+        from app.services.task_service import create_task, complete_task, delete_task, complete_all_tasks
         from app.services.google_svc import GoogleService
         from app.services.archive_service import save_note
         from datetime import datetime
@@ -183,6 +183,12 @@ async def process_message(request: Request):
                     bot_response = f"Done, marked as completed: {result['title']} ✅"
                 else:
                     bot_response = f"Can't find \"{intent.task.title}\" in your open tasks. Maybe it's already done?"
+            elif action == "complete_all":
+                count = await complete_all_tasks(user_id)
+                if count > 0:
+                    bot_response = f"All done! Marked {count} tasks as completed ✅"
+                else:
+                    bot_response = "No open tasks to complete."
             elif action == "delete":
                 result = await delete_task(user_id, intent.task.title)
                 if result:

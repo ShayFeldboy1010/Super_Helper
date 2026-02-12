@@ -23,10 +23,15 @@ Example - create:
   "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Create reminder: buy milk"}},
   "task": {{"action": "create", "title": "Buy milk", "due_date": "2026-02-09 09:00:00", "time": null, "priority": 1, "category": "shopping"}}
 }}
-Example - complete:
+Example - complete one task:
 {{
   "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Complete task: buy milk"}},
   "task": {{"action": "complete", "title": "Buy milk"}}
+}}
+Example - complete ALL tasks:
+{{
+  "classification": {{"action_type": "task", "confidence": 0.95, "summary": "Complete all tasks"}},
+  "task": {{"action": "complete_all", "title": ""}}
 }}
 Example - delete:
 {{
@@ -123,7 +128,8 @@ Rules:
 - When the user asks about a company, person, product, or topic — classify as "query" with context_needed=["web"] so the bot searches for real info.
 - **CRITICAL — TASK CLASSIFICATION**: Only classify as "task" when the user EXPLICITLY asks to create, complete, or delete a task/reminder.
   - Create keywords: "תזכיר לי", "צור משימה", "הוסף תזכורת", "תרשום משימה", "remind me", "add task"
-  - Complete keywords: "סיימתי", "עשיתי", "השלמתי", "completed", "done", "finished"
+  - Complete keywords: "סיימתי", "עשיתי", "השלמתי", "בוצע", "completed", "done", "finished"
+  - Complete ALL keywords: "כל המשימות בוצעו", "עשיתי הכל", "סיימתי הכל", "all tasks done", "completed everything", "finished all" — use action "complete_all" with empty title
   - Delete keywords: "מחק", "תמחק", "הסר", "delete", "remove"
   - If the user just MENTIONS something but doesn't explicitly ask — classify as "query".
 - **CRITICAL**: For all dates and times (start_time, due_date), convert them to ABSOLUTE `YYYY-MM-DD HH:MM:SS` format based on the "Current Date/Time" provided. Do NOT return "tomorrow" or relative strings.

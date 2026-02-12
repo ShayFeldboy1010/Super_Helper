@@ -7,8 +7,8 @@ class ActionClassification(BaseModel):
     summary: str = Field(..., description="A brief summary of the user's request.")
 
 class TaskPayload(BaseModel):
-    action: Literal["create", "complete", "delete"] = "create"
-    title: str
+    action: Literal["create", "complete", "complete_all", "delete"] = "create"
+    title: str = ""
     due_date: Optional[str] = None
     time: Optional[str] = None
     priority: int = 0  # 0=Low, 1=Medium, 2=High, 3=Urgent

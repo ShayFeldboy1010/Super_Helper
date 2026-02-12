@@ -101,6 +101,35 @@ def _match_task(tasks: list[dict], title_query: str) -> dict | None:
     return best_match if best_overlap > 0 else None
 
 
+async def complete_all_tasks(user_id: int) -> int:
+    """Mark ALL pending tasks as completed. Returns count of tasks completed."""
+    try:
+        resp = (
+            supabase.table("tasks")
+            .select("id, title")
+            .eq("user_id", user_id)
+            .eq("status", "pending")
+            .execute()
+        )
+        tasks = resp.data or []
+        if not tasks:
+            return 0
+
+        count = 0
+        for t in tasks:
+            try:
+                supabase.table("tasks").update({"status": "completed"}).eq("id", t["id"]).execute()
+                count += 1
+                logger.info(f"Completed: {t['title']} (id={t['id']})")
+            except Exception as e:
+                logger.error(f"Failed to complete task {t['id']}: {e}")
+
+        return count
+    except Exception as e:
+        logger.error(f"Error completing all tasks: {e}")
+        return 0
+
+
 async def complete_task(user_id: int, title_query: str) -> dict | None:
     """Find a pending task by title match and mark it as completed."""
     try:
