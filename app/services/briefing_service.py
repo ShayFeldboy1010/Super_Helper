@@ -2,9 +2,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-from groq import AsyncGroq
-
-from app.core.config import settings
+from app.core.llm import llm_call
 from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
 from app.services.google_svc import GoogleService
 from app.services.task_service import get_pending_tasks
@@ -14,7 +12,6 @@ from app.services.synergy_service import generate_synergy_insights
 from app.services.memory_service import get_relevant_insights
 
 logger = logging.getLogger(__name__)
-client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 
 def detect_conflicts(events: list[dict]) -> list[str]:
@@ -185,23 +182,21 @@ async def generate_morning_briefing(user_id: int) -> str:
     )
     system_prompt = CHIEF_OF_STAFF_IDENTITY + briefing_instructions
 
-    try:
-        chat_completion = await client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Here's the data for the morning briefing:\n\n{context}"},
-            ],
-            model="moonshotai/kimi-k2-instruct-0905",
-            temperature=0.7,
-        )
+    chat_completion = await llm_call(
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Here's the data for the morning briefing:\n\n{context}"},
+        ],
+        temperature=0.7,
+        timeout=8,
+    )
+    if chat_completion:
         return chat_completion.choices[0].message.content
-    except Exception as e:
-        logger.error(f"Briefing LLM error: {e}")
-        # Fallback: return raw formatted data
-        return (
-            f"Morning Briefing\n\n"
-            f"📅 Calendar:\n{_format_events_context(events)}\n\n"
-            f"{''.join(c + chr(10) for c in conflicts)}"
-            f"📧 Emails:\n{emails_str}\n\n"
-            f"✅ Tasks:\n{_format_tasks_context(tasks)}"
-        )
+    # Fallback: return raw formatted data
+    return (
+        f"Morning Briefing\n\n"
+        f"📅 Calendar:\n{_format_events_context(events)}\n\n"
+        f"{''.join(c + chr(10) for c in conflicts)}"
+        f"📧 Emails:\n{emails_str}\n\n"
+        f"✅ Tasks:\n{_format_tasks_context(tasks)}"
+    )

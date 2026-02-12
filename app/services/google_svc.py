@@ -151,13 +151,23 @@ class GoogleService:
             logger.error(f"Calendar detailed API error: {e}")
             return []
 
-    async def create_calendar_event(self, title: str, start_dt: datetime) -> Optional[str]:
+    async def create_calendar_event(
+        self,
+        title: str,
+        start_dt: datetime,
+        end_dt: datetime = None,
+        location: str = None,
+        description: str = None,
+    ) -> Optional[str]:
         if not self.creds:
             if not await self.authenticate():
                 return None
 
         try:
             service = build('calendar', 'v3', credentials=self.creds)
+
+            if not end_dt:
+                end_dt = start_dt + timedelta(hours=1)
 
             event = {
                 'summary': title,
@@ -166,10 +176,14 @@ class GoogleService:
                     'timeZone': 'Asia/Jerusalem',
                 },
                 'end': {
-                    'dateTime': (start_dt + timedelta(hours=1)).isoformat(),
+                    'dateTime': end_dt.isoformat(),
                     'timeZone': 'Asia/Jerusalem',
                 },
             }
+            if location:
+                event['location'] = location
+            if description:
+                event['description'] = description
 
             event = service.events().insert(calendarId='primary', body=event).execute()
             return event.get('htmlLink')

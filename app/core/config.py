@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     STOCK_WATCHLIST: str = "NVDA,MSFT,GOOGL,META,AAPL"
     STOCK_INDICES: str = "^GSPC,^IXIC,^TA125.TA"
 
+    # Search
+    BRAVE_SEARCH_API_KEY: str = ""
+
     # Defaults
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Telegram Command Center"

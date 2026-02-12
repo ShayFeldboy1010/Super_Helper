@@ -9,17 +9,11 @@ router = APIRouter(prefix="/api/cron", tags=["cron"])
 logger = logging.getLogger(__name__)
 
 async def verify_cron_secret(authorization: str = Header(None)):
-    # Vercel sends "Authorization: Bearer <CRON_SECRET>"
-    # Or strict header check. For now, simple check.
-    # User needs to set CRON_SECRET env var.
-    if not authorization:
-        pass
+    expected = f"Bearer {settings.M_WEBHOOK_SECRET}"
+    if not authorization or authorization != expected:
+        raise HTTPException(status_code=401, detail="Invalid cron secret")
 
-    expected = f"Bearer {settings.M_WEBHOOK_SECRET}" # Reuse webhook secret for simplicity or add new env
-    if authorization != expected:
-        pass # Returning pass to avoid breaking if user hasn't configured it yet
-
-@router.get("/check-reminders") # Vercel cron calls GET by default usually? Vercel supports GET/POST.
+@router.get("/check-reminders", dependencies=[Depends(verify_cron_secret)])
 async def check_reminders():
     user_id = settings.TELEGRAM_USER_ID
     tasks = await get_overdue_tasks(user_id)
@@ -48,7 +42,7 @@ async def check_reminders():
 
     return {"status": "ok", "reminders_sent": len(tasks)}
 
-@router.get("/daily-brief")
+@router.get("/daily-brief", dependencies=[Depends(verify_cron_secret)])
 async def daily_brief():
     user_id = settings.TELEGRAM_USER_ID
 
@@ -101,7 +95,7 @@ async def daily_brief():
         return {"status": "ok", "message": "Basic briefing sent (fallback)"}
 
 
-@router.get("/heartbeat")
+@router.get("/heartbeat", dependencies=[Depends(verify_cron_secret)])
 async def heartbeat():
     """Proactive check-in — mid-week nudge or evening wrap-up depending on time."""
     user_id = settings.TELEGRAM_USER_ID
@@ -132,7 +126,7 @@ async def heartbeat():
         return {"status": "error", "message": str(e)}
 
 
-@router.get("/weekly-review")
+@router.get("/weekly-review", dependencies=[Depends(verify_cron_secret)])
 async def weekly_review():
     """Sunday evening weekly review."""
     user_id = settings.TELEGRAM_USER_ID
@@ -153,7 +147,7 @@ async def weekly_review():
         return {"status": "error", "message": str(e)}
 
 
-@router.get("/daily-reflection")
+@router.get("/daily-reflection", dependencies=[Depends(verify_cron_secret)])
 async def daily_reflection():
     user_id = settings.TELEGRAM_USER_ID
 

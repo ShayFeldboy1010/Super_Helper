@@ -108,19 +108,34 @@ async def _fetch_symbol(client: httpx.AsyncClient, symbol: str) -> dict | None:
 
 
 async def fetch_symbols(symbols: list[str]) -> list[dict]:
-    """Fetch price data for specific ticker symbols."""
+    """Fetch price data for specific ticker symbols. Cached 60s by sorted symbols."""
     if not symbols:
         return []
+    from app.core.cache import cache_get, cache_set
+
+    cache_key = "symbols:" + ",".join(sorted(symbols))
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     async with httpx.AsyncClient(timeout=10) as client:
         results = await asyncio.gather(
             *[_fetch_symbol(client, s) for s in symbols],
             return_exceptions=True,
         )
-    return [r for r in results if isinstance(r, dict)]
+    data = [r for r in results if isinstance(r, dict)]
+    cache_set(cache_key, data, 60)
+    return data
 
 
 async def fetch_market_data() -> dict:
-    """Fetch market data for configured indices and tickers."""
+    """Fetch market data for configured indices and tickers. Cached 60s."""
+    from app.core.cache import cache_get, cache_set
+
+    cached = cache_get("market_data")
+    if cached is not None:
+        return cached
+
     indices_str = getattr(settings, "STOCK_INDICES", "^GSPC,^IXIC,^TA125.TA")
     tickers_str = getattr(settings, "STOCK_WATCHLIST", "NVDA,MSFT,GOOGL,META,AAPL")
 
@@ -142,4 +157,6 @@ async def fetch_market_data() -> dict:
             else:
                 tickers.append(result)
 
-    return {"indices": indices, "tickers": tickers}
+    result = {"indices": indices, "tickers": tickers}
+    cache_set("market_data", result, 60)
+    return result

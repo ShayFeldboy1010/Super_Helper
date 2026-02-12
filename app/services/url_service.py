@@ -3,13 +3,11 @@ import logging
 
 import httpx
 from bs4 import BeautifulSoup
-from groq import AsyncGroq
 
-from app.core.config import settings
+from app.core.llm import llm_call
 from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
 
 logger = logging.getLogger(__name__)
-client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 URL_PATTERN = re.compile(r'https?://[^\s<>"{}|\\^`\[\]]+')
 
@@ -50,33 +48,32 @@ async def summarize_and_tag(url: str, title: str, content: str) -> dict:
     if not content:
         return {"summary": "Couldn't extract content from the link.", "tags": [], "key_points": []}
 
-    try:
-        prompt = (
-            "You are a content analyst. You received an article/page from the web.\n"
-            "Return JSON with:\n"
-            '- "summary": summary in English (2-3 sentences)\n'
-            '- "tags": list of English tags (3-5 relevant tags)\n'
-            '- "key_points": 2-3 key points in English\n\n'
-            f"Title: {title}\nURL: {url}\n\nContent:\n{content}"
-        )
+    prompt = (
+        "You are a content analyst. You received an article/page from the web.\n"
+        "Return JSON with:\n"
+        '- "summary": summary in English (2-3 sentences)\n'
+        '- "tags": list of English tags (3-5 relevant tags)\n'
+        '- "key_points": 2-3 key points in English\n\n'
+        f"Title: {title}\nURL: {url}\n\nContent:\n{content}"
+    )
 
-        chat_completion = await client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": CHIEF_OF_STAFF_IDENTITY + "\n\nYou are a content analyst. Return only valid JSON."},
-                {"role": "user", "content": prompt},
-            ],
-            model="moonshotai/kimi-k2-instruct-0905",
-            response_format={"type": "json_object"},
-            temperature=0.3,
-        )
+    chat_completion = await llm_call(
+        messages=[
+            {"role": "system", "content": CHIEF_OF_STAFF_IDENTITY + "\n\nYou are a content analyst. Return only valid JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.3,
+        timeout=8,
+    )
 
-        import json
-        result = json.loads(chat_completion.choices[0].message.content)
-        return {
-            "summary": result.get("summary", ""),
-            "tags": result.get("tags", []),
-            "key_points": result.get("key_points", []),
-        }
-    except Exception as e:
-        logger.error(f"LLM summarization error: {e}")
+    if not chat_completion:
         return {"summary": f"Saved the link: {title}", "tags": [], "key_points": []}
+
+    import json
+    result = json.loads(chat_completion.choices[0].message.content)
+    return {
+        "summary": result.get("summary", ""),
+        "tags": result.get("tags", []),
+        "key_points": result.get("key_points", []),
+    }

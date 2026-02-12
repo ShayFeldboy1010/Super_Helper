@@ -1,13 +1,10 @@
-from groq import AsyncGroq
-from app.core.config import settings
+from app.core.llm import llm_call
 from app.models.router_models import RouterResponse
 import json
 import logging
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
-
-client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 ROUTER_SYSTEM_PROMPT = """You are a fast intent classifier. Military precision, zero waste.
 Classify the user's Hebrew input into one of 4 categories and extract details.
@@ -17,11 +14,16 @@ Day of week: {current_day}
 
 Categories & Schemas:
 
-1. **task**: Create, complete, or delete a task/reminder.
+1. **task**: Create, complete, edit, or delete a task/reminder.
 Example - create:
 {{
   "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Create reminder: buy milk"}},
   "task": {{"action": "create", "title": "Buy milk", "due_date": "2026-02-09 09:00:00", "time": null, "priority": 1, "category": "shopping"}}
+}}
+Example - create recurring:
+{{
+  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Create daily recurring task: exercise"}},
+  "task": {{"action": "create", "title": "Exercise", "due_date": "2026-02-09 09:00:00", "priority": 1, "recurrence": "daily"}}
 }}
 Example - complete one task:
 {{
@@ -32,6 +34,16 @@ Example - complete ALL tasks:
 {{
   "classification": {{"action_type": "task", "confidence": 0.95, "summary": "Complete all tasks"}},
   "task": {{"action": "complete_all", "title": ""}}
+}}
+Example - edit (rename):
+{{
+  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Rename task: buy milk to buy oat milk"}},
+  "task": {{"action": "edit", "title": "Buy milk", "new_title": "Buy oat milk"}}
+}}
+Example - edit (reschedule):
+{{
+  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Reschedule task: buy milk to Sunday"}},
+  "task": {{"action": "edit", "title": "Buy milk", "new_due_date": "2026-02-15 09:00:00"}}
 }}
 Example - delete:
 {{
@@ -108,6 +120,12 @@ Example - asking for advice/ideas:
   "query": {{"query": "Give me ideas for a side project", "context_needed": [], "target_date": null}}
 }}
 
+Example - searching saved notes/archive:
+{{
+  "classification": {{"action_type": "query", "confidence": 0.9, "summary": "Search archive about AI tools"}},
+  "query": {{"query": "What did I save about AI tools?", "context_needed": ["archive"], "target_date": null}}
+}}
+
 context_needed options: "calendar", "tasks", "archive", "email", "web", "synergy", "news", "market"
 - Use "email" when the user asks about emails, inbox, or messages.
 - Use "calendar" for schedule/events questions.
@@ -126,12 +144,15 @@ Rules:
 - If it's a specific event with time, prefer 'calendar' over 'task'.
 - If the user asks a general knowledge question, opinion, or wants to chat — classify as "query". The bot can answer anything.
 - When the user asks about a company, person, product, or topic — classify as "query" with context_needed=["web"] so the bot searches for real info.
-- **CRITICAL — TASK CLASSIFICATION**: Only classify as "task" when the user EXPLICITLY asks to create, complete, or delete a task/reminder.
+- **CRITICAL — TASK CLASSIFICATION**: Only classify as "task" when the user EXPLICITLY asks to create, complete, edit, or delete a task/reminder.
   - Create keywords: "תזכיר לי", "צור משימה", "הוסף תזכורת", "תרשום משימה", "remind me", "add task"
   - Complete keywords: "סיימתי", "עשיתי", "השלמתי", "בוצע", "completed", "done", "finished"
   - Complete ALL keywords: "כל המשימות בוצעו", "עשיתי הכל", "סיימתי הכל", "all tasks done", "completed everything", "finished all" — use action "complete_all" with empty title
+  - Edit keywords: "שנה", "עדכן", "דחה", "postpone", "reschedule", "rename", "change" — use action "edit" with the ORIGINAL title and new_title / new_due_date / new_priority as appropriate
   - Delete keywords: "מחק", "תמחק", "הסר", "delete", "remove"
+  - Recurring keywords: "כל יום", "כל שבוע", "כל חודש", "every day", "daily", "weekly", "monthly" — add "recurrence" field with value "daily", "weekly", or "monthly"
   - If the user just MENTIONS something but doesn't explicitly ask — classify as "query".
+- **ARCHIVE SEARCH**: When the user asks "what did I save about X?", "מה שמרתי על", or similar — classify as "query" with context_needed=["archive"]. The archive search uses full-text search.
 - **CRITICAL**: For all dates and times (start_time, due_date), convert them to ABSOLUTE `YYYY-MM-DD HH:MM:SS` format based on the "Current Date/Time" provided. Do NOT return "tomorrow" or relative strings.
 - **CRITICAL**: When the user mentions a day name like "Wednesday" / "יום רביעי", calculate the actual date of THIS week's occurrence (or next week if that day has already passed). Use the "Day of week" provided above to calculate.
 - When in doubt between "task" and "query", prefer "query". The user will explicitly ask if they want a reminder.
@@ -146,8 +167,7 @@ async def route_intent(text: str) -> RouterResponse:
         days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         current_day = days[now.weekday()]
 
-        response = await client.chat.completions.create(
-            model="moonshotai/kimi-k2-instruct-0905",
+        response = await llm_call(
             messages=[
                 {"role": "system", "content": ROUTER_SYSTEM_PROMPT.format(
                     current_time=current_time,
@@ -156,8 +176,12 @@ async def route_intent(text: str) -> RouterResponse:
                 {"role": "user", "content": text}
             ],
             response_format={"type": "json_object"},
-            temperature=0.1
+            temperature=0.1,
+            timeout=7,
         )
+
+        if not response:
+            raise Exception("LLM returned None")
 
         content = response.choices[0].message.content
         logger.info(f"Router Raw Output: {content}")

@@ -21,6 +21,64 @@ async def save_note(user_id: int, content: str, tags: Optional[List[str]] = None
         return None
 
 
+async def search_archive(
+    user_id: int,
+    query: str,
+    tags: Optional[List[str]] = None,
+    limit: int = 10,
+) -> List[dict]:
+    """Full-text search on the archive table. Requires fts column + GIN index."""
+    try:
+        results = []
+
+        # FTS search
+        if query and query.strip():
+            words = [w for w in query.strip().split() if len(w) > 1]
+            if words:
+                ts_query = " | ".join(words)
+                try:
+                    fts_resp = (
+                        supabase.table("archive")
+                        .select("content, tags, metadata, created_at")
+                        .eq("user_id", user_id)
+                        .text_search("fts", ts_query)
+                        .limit(limit)
+                        .execute()
+                    )
+                    results.extend(fts_resp.data or [])
+                except Exception as e:
+                    logger.warning(f"Archive FTS failed, falling back to basic: {e}")
+                    # Fallback: ilike search
+                    fallback = (
+                        supabase.table("archive")
+                        .select("content, tags, metadata, created_at")
+                        .eq("user_id", user_id)
+                        .ilike("content", f"%{words[0]}%")
+                        .order("created_at", desc=True)
+                        .limit(limit)
+                        .execute()
+                    )
+                    results.extend(fallback.data or [])
+
+        # Optional tag filter
+        if tags and not results:
+            tag_resp = (
+                supabase.table("archive")
+                .select("content, tags, metadata, created_at")
+                .eq("user_id", user_id)
+                .overlaps("tags", tags)
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            results.extend(tag_resp.data or [])
+
+        return results[:limit]
+    except Exception as e:
+        logger.error(f"Archive search error: {e}")
+        return []
+
+
 async def save_url_knowledge(
     user_id: int,
     url: str,

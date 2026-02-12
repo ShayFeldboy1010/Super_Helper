@@ -63,6 +63,9 @@ async def create_task(user_id: int, task_data):
     }
     if due_at:
         payload["due_at"] = due_at.isoformat()
+    # Recurring tasks (Batch 7)
+    if data.get('recurrence'):
+        payload["recurrence"] = data['recurrence']
 
     try:
         # Ensure user exists to avoid FK violation
@@ -76,6 +79,64 @@ async def create_task(user_id: int, task_data):
     except Exception as e:
         logger.error(f"Supabase error: {e}")
         return None
+
+def _parse_due_string(d: str) -> datetime | None:
+    """Parse a date string into a TZ-aware datetime. Reused by create and edit."""
+    d = d.strip().lower()
+    now = datetime.now(TZ)
+    today = now.date()
+
+    if d == "today":
+        return datetime.combine(today, time(9, 0)).replace(tzinfo=TZ)
+    elif d == "tomorrow":
+        return datetime.combine(today + timedelta(days=1), time(9, 0)).replace(tzinfo=TZ)
+    else:
+        try:
+            parsed_dt = datetime.strptime(d, "%Y-%m-%d %H:%M:%S")
+            return parsed_dt.replace(tzinfo=TZ)
+        except ValueError:
+            try:
+                parsed_dt = datetime.strptime(d, "%Y-%m-%d")
+                return datetime.combine(parsed_dt.date(), time(9, 0)).replace(tzinfo=TZ)
+            except ValueError:
+                return None
+
+
+def _spawn_next_recurring(task: dict):
+    """Create the next occurrence of a recurring task."""
+    recurrence = task.get("recurrence")
+    if not recurrence:
+        return
+
+    intervals = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1), "monthly": timedelta(days=30)}
+    delta = intervals.get(recurrence)
+    if not delta:
+        return
+
+    due_at = task.get("due_at")
+    next_due = None
+    if due_at:
+        try:
+            dt = datetime.fromisoformat(due_at)
+            next_due = (dt + delta).isoformat()
+        except (ValueError, TypeError):
+            next_due = (datetime.now(TZ) + delta).isoformat()
+    else:
+        next_due = (datetime.now(TZ) + delta).isoformat()
+
+    try:
+        supabase.table("tasks").insert({
+            "user_id": task["user_id"],
+            "title": task["title"],
+            "priority": task.get("priority", 0),
+            "status": "pending",
+            "due_at": next_due,
+            "recurrence": recurrence,
+        }).execute()
+        logger.info(f"Spawned next {recurrence} occurrence of '{task['title']}'")
+    except Exception as e:
+        logger.error(f"Failed to spawn recurring task: {e}")
+
 
 def _match_task(tasks: list[dict], title_query: str) -> dict | None:
     """Find best matching task by title. Tries exact substring, then word overlap."""
@@ -106,7 +167,7 @@ async def complete_all_tasks(user_id: int) -> int:
     try:
         resp = (
             supabase.table("tasks")
-            .select("id, title")
+            .select("*")
             .eq("user_id", user_id)
             .eq("status", "pending")
             .execute()
@@ -121,6 +182,8 @@ async def complete_all_tasks(user_id: int) -> int:
                 supabase.table("tasks").update({"status": "completed"}).eq("id", t["id"]).execute()
                 count += 1
                 logger.info(f"Completed: {t['title']} (id={t['id']})")
+                # Auto-spawn next occurrence for recurring tasks
+                _spawn_next_recurring(t)
             except Exception as e:
                 logger.error(f"Failed to complete task {t['id']}: {e}")
 
@@ -154,6 +217,8 @@ async def complete_task(user_id: int, title_query: str) -> dict | None:
         update_resp = supabase.table("tasks").update({"status": "completed"}).eq("id", match["id"]).execute()
         if update_resp.data:
             logger.info(f"Task completed: {match['title']} (id={match['id']})")
+            # Auto-spawn next occurrence for recurring tasks
+            _spawn_next_recurring(match)
             return match
         else:
             logger.error(f"Task update returned no data for id={match['id']}")
@@ -213,3 +278,46 @@ async def get_pending_tasks(user_id: int, limit: int = 5):
     except Exception as e:
         logger.error(f"Error fetching pending tasks: {e}")
         return []
+
+
+async def edit_task(user_id: int, title_query: str, updates: dict) -> dict | None:
+    """Find a pending task by title match and apply updates."""
+    try:
+        resp = (
+            supabase.table("tasks")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("status", "pending")
+            .execute()
+        )
+        tasks = resp.data or []
+        if not tasks:
+            return None
+
+        match = _match_task(tasks, title_query)
+        if not match:
+            logger.info(f"No task matched '{title_query}' for edit")
+            return None
+
+        payload = {}
+        if "title" in updates:
+            payload["title"] = updates["title"]
+        if "due_date" in updates:
+            parsed = _parse_due_string(updates["due_date"])
+            if parsed:
+                payload["due_at"] = parsed.isoformat()
+        if "priority" in updates:
+            payload["priority"] = updates["priority"]
+
+        if not payload:
+            return match  # nothing to change
+
+        update_resp = supabase.table("tasks").update(payload).eq("id", match["id"]).execute()
+        if update_resp.data:
+            logger.info(f"Task edited: {match['title']} -> {payload}")
+            return update_resp.data[0]
+        return None
+
+    except Exception as e:
+        logger.error(f"Error editing task: {e}")
+        return None

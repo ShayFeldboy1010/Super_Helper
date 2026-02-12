@@ -1,11 +1,9 @@
 import logging
 import json
 from app.core.database import supabase
-from groq import AsyncGroq
-from app.core.config import settings
+from app.core.llm import llm_call
 
 logger = logging.getLogger(__name__)
-client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 # Maps action_type to relevant insight categories
 CATEGORY_MAP = {
@@ -22,16 +20,20 @@ async def log_interaction(
     bot_response: str,
     action_type: str,
     intent_summary: str = None,
+    telegram_update_id: int = None,
 ):
     """Insert into interaction_log. Errors are swallowed — never blocks the user."""
     try:
-        supabase.table("interaction_log").insert({
+        payload = {
             "user_id": user_id,
             "user_message": user_message,
             "bot_response": bot_response,
             "action_type": action_type,
             "intent_summary": intent_summary,
-        }).execute()
+        }
+        if telegram_update_id:
+            payload["telegram_update_id"] = telegram_update_id
+        supabase.table("interaction_log").insert(payload).execute()
     except Exception as e:
         logger.error(f"Failed to log interaction: {e}")
 
@@ -178,15 +180,18 @@ async def run_daily_reflection(user_id: int) -> dict:
         )
 
         # 4. Call LLM
-        chat_completion = await client.chat.completions.create(
+        chat_completion = await llm_call(
             messages=[
                 {"role": "system", "content": REFLECTION_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            model="moonshotai/kimi-k2-instruct-0905",
             response_format={"type": "json_object"},
             temperature=0.3,
+            timeout=8,
         )
+        if not chat_completion:
+            logger.error("LLM returned None for daily reflection")
+            return summary
 
         result = json.loads(chat_completion.choices[0].message.content)
 

@@ -1,11 +1,8 @@
 import logging
 
-from groq import AsyncGroq
-
-from app.core.config import settings
+from app.core.llm import llm_call
 
 logger = logging.getLogger(__name__)
-client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 SYNERGY_PROMPT = """You are a sharp business analyst connecting AI developments with market movements.
 
@@ -73,17 +70,15 @@ async def generate_synergy_insights(
         "Personalize to the user's projects and interests."
     )
 
-    try:
-        chat_completion = await client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": SYNERGY_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            model="moonshotai/kimi-k2-instruct-0905",
-            temperature=0.8,
-        )
-        result = chat_completion.choices[0].message.content
-        return result if result and result.strip() else "No strong synergy patterns today."
-    except Exception as e:
-        logger.error(f"Synergy analysis error: {e}")
+    chat_completion = await llm_call(
+        messages=[
+            {"role": "system", "content": SYNERGY_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.8,
+        timeout=8,
+    )
+    if not chat_completion:
         return "Synergy analysis unavailable."
+    result = chat_completion.choices[0].message.content
+    return result if result and result.strip() else "No strong synergy patterns today."

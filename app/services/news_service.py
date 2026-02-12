@@ -43,7 +43,14 @@ async def _fetch_single_feed(feed_info: dict, hours_back: int) -> list[dict]:
 
 
 async def fetch_ai_news(max_items: int = 10, hours_back: int = 24) -> list[dict]:
-    """Fetch AI news from curated RSS feeds, all in parallel."""
+    """Fetch AI news from curated RSS feeds, all in parallel. Cached 5min."""
+    from app.core.cache import cache_get, cache_set
+
+    cache_key = f"ai_news:{max_items}:{hours_back}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     results = await asyncio.gather(
         *[_fetch_single_feed(feed, hours_back) for feed in RSS_FEEDS],
         return_exceptions=True,
@@ -55,4 +62,6 @@ async def fetch_ai_news(max_items: int = 10, hours_back: int = 24) -> list[dict]
             all_items.extend(result)
 
     # Sort by title (proxy for recency when dates unavailable) and limit
-    return all_items[:max_items]
+    items = all_items[:max_items]
+    cache_set(cache_key, items, 300)
+    return items

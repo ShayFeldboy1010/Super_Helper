@@ -8,12 +8,10 @@ from app.services.news_service import fetch_ai_news
 from app.services.market_service import fetch_market_data, fetch_symbols, extract_tickers_from_query
 from app.services.synergy_service import generate_synergy_insights
 from app.services.memory_service import get_relevant_insights
-from groq import AsyncGroq
-from app.core.config import settings
+from app.core.llm import llm_call
 from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
 
 logger = logging.getLogger(__name__)
-client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 
 class QueryService:
@@ -66,14 +64,16 @@ class QueryService:
             except Exception as e:
                 logger.error(f"Error fetching tasks: {e}")
 
-        # 3. Fetch Notes
+        # 3. Fetch Notes / Archive search
         if "notes" in context_needed or "archive" in context_needed:
             try:
-                response = supabase.table("archive").select("content, tags, metadata").eq("user_id", self.user_id).order("created_at", desc=True).limit(5).execute()
-                notes = response.data
+                from app.services.archive_service import search_archive
+                notes = await search_archive(self.user_id, query_text, limit=10)
                 if notes:
                     note_list = "\n".join([f"- {n['content']} (Tags: {n['tags']})" for n in notes])
-                    context_data.append(f"📝 Recent notes:\n{note_list}")
+                    context_data.append(f"📝 Saved notes:\n{note_list}")
+                else:
+                    context_data.append("📝 No matching notes found in archive.")
             except Exception as e:
                 logger.error(f"Error fetching notes: {e}")
 
@@ -196,16 +196,14 @@ class QueryService:
         else:
             user_content = query_text
 
-        try:
-            chat_completion = await client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content}
-                ],
-                model="moonshotai/kimi-k2-instruct-0905",
-                temperature=0.7,
-            )
-            return chat_completion.choices[0].message.content
-        except Exception as e:
-            logger.error(f"LLM generation error: {e}")
+        chat_completion = await llm_call(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            temperature=0.7,
+            timeout=8,
+        )
+        if not chat_completion:
             return "Something went wrong. Try again."
+        return chat_completion.choices[0].message.content

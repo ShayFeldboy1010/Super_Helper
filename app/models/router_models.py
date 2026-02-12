@@ -7,12 +7,18 @@ class ActionClassification(BaseModel):
     summary: str = Field(..., description="A brief summary of the user's request.")
 
 class TaskPayload(BaseModel):
-    action: Literal["create", "complete", "complete_all", "delete"] = "create"
+    action: Literal["create", "complete", "complete_all", "delete", "edit"] = "create"
     title: str = ""
     due_date: Optional[str] = None
     time: Optional[str] = None
     priority: int = 0  # 0=Low, 1=Medium, 2=High, 3=Urgent
     category: Optional[str] = None
+    # Edit fields (Batch 6)
+    new_title: Optional[str] = None
+    new_due_date: Optional[str] = None
+    new_priority: Optional[int] = None
+    # Recurring (Batch 7)
+    recurrence: Optional[Literal["daily", "weekly", "monthly"]] = None
 
 class CalendarPayload(BaseModel):
     summary: str

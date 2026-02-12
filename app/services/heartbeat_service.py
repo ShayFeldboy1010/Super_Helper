@@ -4,9 +4,7 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from groq import AsyncGroq
-
-from app.core.config import settings
+from app.core.llm import llm_call
 from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
 from app.core.database import supabase
 from app.services.task_service import get_pending_tasks, get_overdue_tasks
@@ -14,7 +12,6 @@ from app.services.google_svc import GoogleService
 from app.services.memory_service import get_relevant_insights
 
 logger = logging.getLogger(__name__)
-client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 TZ = ZoneInfo("Asia/Jerusalem")
 
 
@@ -60,15 +57,15 @@ async def generate_weekly_review(user_id: int) -> str | None:
             f"Be direct, personal, like a good friend who knows him."
         )
 
-        chat = await client.chat.completions.create(
+        chat = await llm_call(
             messages=[
                 {"role": "system", "content": CHIEF_OF_STAFF_IDENTITY},
                 {"role": "user", "content": prompt},
             ],
-            model="moonshotai/kimi-k2-instruct-0905",
             temperature=0.7,
+            timeout=8,
         )
-        return chat.choices[0].message.content
+        return chat.choices[0].message.content if chat else None
 
     except Exception as e:
         logger.error(f"Weekly review error: {e}")
@@ -112,15 +109,15 @@ async def generate_goal_checkin(user_id: int) -> str | None:
             f"Be like a friend who cares, not like an app."
         )
 
-        chat = await client.chat.completions.create(
+        chat = await llm_call(
             messages=[
                 {"role": "system", "content": CHIEF_OF_STAFF_IDENTITY},
                 {"role": "user", "content": prompt},
             ],
-            model="moonshotai/kimi-k2-instruct-0905",
             temperature=0.7,
+            timeout=8,
         )
-        return chat.choices[0].message.content
+        return chat.choices[0].message.content if chat else None
 
     except Exception as e:
         logger.error(f"Goal check-in error: {e}")
@@ -175,15 +172,15 @@ async def generate_evening_wrapup(user_id: int) -> str | None:
             f"Tone: calm, direct, like a friend syncing at end of day."
         )
 
-        chat = await client.chat.completions.create(
+        chat = await llm_call(
             messages=[
                 {"role": "system", "content": CHIEF_OF_STAFF_IDENTITY},
                 {"role": "user", "content": prompt},
             ],
-            model="moonshotai/kimi-k2-instruct-0905",
             temperature=0.7,
+            timeout=8,
         )
-        return chat.choices[0].message.content
+        return chat.choices[0].message.content if chat else None
 
     except Exception as e:
         logger.error(f"Evening wrap-up error: {e}")
