@@ -133,9 +133,9 @@ context_needed options: "calendar", "tasks", "archive", "email", "web", "synergy
 - Use "archive" for saved notes or previously stored knowledge.
 - Use "news" when the user asks about AI news, AI developments, "what's new in AI", "חדשות AI", tech news, or any AI/tech industry updates.
 - Use "market" when the user asks about stocks, stock prices, market status, NVDA, tickers, indices, "how is the market", "מניות", or any financial market data.
-- Use "web" for general knowledge questions, searches, "what is X", "find me Y", or anything else that needs up-to-date information from the internet (NOT for AI news or stocks — use "news" and "market" for those).
+- Use "web" for general knowledge questions, searches, "what is X", "find me Y", or anything else that needs up-to-date information from the internet (NOT for AI news or stocks — use "news" and "market" for those). IMPORTANT: also use "web" for ANY question about real-time events, sports, games, scores, schedules, weather, concerts, flights, or anything that changes day-to-day. Examples: "is there a basketball game today?", "when does Maccabi play?", "משחק של מכבי", "מזג אוויר", "כדורסל היום".
 - Use "synergy" when the user asks about AI-market opportunities, business ideas from current trends, "what's hot", "any opportunities", "market connections", "what should I build", or anything connecting AI developments with market/business opportunities.
-- Use [] (empty) for casual chat, opinions, ideas, advice, greetings — things that don't need external data.
+- Use [] (empty) ONLY for casual chat, opinions, ideas, advice, greetings — things that genuinely don't need external data. When in doubt between [] and ["web"], prefer ["web"].
 
 target_date: When the user asks about a SPECIFIC day (e.g. "Wednesday", "next Sunday", "February 15th"), compute the exact YYYY-MM-DD date based on Current Date/Time and set it as target_date. If the user says a day name without "next" or "last", assume THIS COMING occurrence (the nearest future one). If asking about "today", set target_date to null.
 
