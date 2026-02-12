@@ -60,8 +60,8 @@ async def _hand_off_to_processor(update_data: dict):
         # Typing indicator (Batch 4)
         await bot.send_chat_action(chat_id=chat_id, action="typing")
 
-        # Send "..." placeholder immediately
-        status = await bot.send_message(chat_id=chat_id, text="...")
+        # Send placeholder immediately (will be edited with real response)
+        status = await bot.send_message(chat_id=chat_id, text="⏳")
         status_msg_id = status.message_id
 
         # Build base URL from WEBHOOK_URL
