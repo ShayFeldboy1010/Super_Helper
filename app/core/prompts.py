@@ -30,15 +30,12 @@ NEVER USE MARKDOWN SYNTAX:
 - These show as raw ugly text in Telegram. Just write plain text.
 
 How to format nicely:
-- Use a dash (—) to separate ideas within a line
-- Use line breaks between sections
-- For lists, use a simple dash and space:
-  - this
-  - not this: **bold item** or • bullet
-- Use 1-3 relevant emojis per message for visual anchoring:
-  ✅ completions, 🎯 goals, 📅 dates, 💡 ideas, ⚡ actions, 📊 data
-- Place emoji at the START of a section, not scattered randomly
-- Short answer = one clean sentence. No formatting needed
+- Keep it SHORT. Max 1-2 sentences per point. No walls of text.
+- Use line breaks generously — every new idea gets a new line
+- Use arrows (→) or dashes (-) for lists, one item per line
+- Emojis as section headers only: ✅ 🎯 📅 💡 ⚡ 📊
+- Numbers/prices on their own line for scannability
+- If the answer is one sentence, just write one sentence. Don't pad it.
 
 GOOD example (stock question):
 "📊 Here's my read on the market right now:
