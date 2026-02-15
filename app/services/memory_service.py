@@ -191,7 +191,7 @@ async def extract_follow_ups(user_id: int) -> int:
             response_format={"type": "json_object"},
             temperature=0.3,
             timeout=10,
-            tier="flash",
+
         )
         if not chat_completion:
             return 0
@@ -295,7 +295,7 @@ async def run_daily_reflection(user_id: int) -> dict:
             response_format={"type": "json_object"},
             temperature=0.3,
             timeout=15,
-            tier="pro",
+
         )
         if not chat_completion:
             logger.error("LLM returned None for daily reflection")

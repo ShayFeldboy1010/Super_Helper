@@ -328,7 +328,7 @@ async def generate_morning_briefing(user_id: int) -> str:
         ],
         temperature=0.7,
         timeout=30,
-        tier="pro",
+
     )
     if chat_completion:
         return chat_completion.choices[0].message.content
@@ -438,7 +438,7 @@ async def generate_meeting_prep(user_id: int) -> list[str]:
             ],
             temperature=0.5,
             timeout=15,
-            tier="pro",
+    
         )
 
         if chat:

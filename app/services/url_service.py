@@ -65,7 +65,7 @@ async def summarize_and_tag(url: str, title: str, content: str) -> dict:
         response_format={"type": "json_object"},
         temperature=0.3,
         timeout=10,
-        tier="flash",
+
     )
 
     if not chat_completion:

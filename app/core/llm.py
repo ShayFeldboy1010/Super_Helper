@@ -1,4 +1,4 @@
-"""Centralised LLM wrapper — Gemini primary + Groq fallback."""
+"""Centralised LLM wrapper — Gemini Flash primary + Groq fallback."""
 import asyncio
 import logging
 from dataclasses import dataclass, field
@@ -40,13 +40,6 @@ def _wrap_gemini_response(response) -> _CompatResponse:
     return _CompatResponse(choices=[_Choice(message=_Message(content=text))])
 
 
-def _resolve_model(tier: str) -> str:
-    """Map tier name to Gemini model."""
-    if tier == "pro":
-        return settings.GEMINI_MODEL_PRO
-    return settings.GEMINI_MODEL_FLASH
-
-
 def _convert_messages(messages: list[dict]) -> tuple[str | None, str]:
     """Convert OpenAI-style messages to Gemini (system_instruction, contents).
 
@@ -73,10 +66,9 @@ async def _gemini_call(
     timeout: float,
     temperature: float,
     response_format: dict | None,
-    tier: str,
 ) -> _CompatResponse | None:
-    """Call Gemini with 1 retry."""
-    model = _resolve_model(tier)
+    """Call Gemini Flash with 1 retry."""
+    model = settings.GEMINI_MODEL
     system_text, user_text = _convert_messages(messages)
 
     config_kwargs: dict = {"temperature": temperature}
@@ -143,19 +135,15 @@ async def llm_call(
     timeout: float = 30.0,
     temperature: float = 0.7,
     response_format: dict | None = None,
-    tier: str = "flash",
     **kwargs,
 ) -> object | None:
-    """Call LLM: Gemini (primary) -> Groq (fallback) -> None.
-
-    Args:
-        tier: "flash" (default, fast tasks) or "pro" (complex tasks).
+    """Call LLM: Gemini Flash (primary) -> Groq (fallback) -> None.
 
     Returns a ChatCompletion-compatible object or None.
     Caller accesses .choices[0].message.content as before.
     """
-    # 1. Try Gemini
-    result = await _gemini_call(messages, timeout, temperature, response_format, tier)
+    # 1. Try Gemini Flash
+    result = await _gemini_call(messages, timeout, temperature, response_format)
     if result:
         return result
 

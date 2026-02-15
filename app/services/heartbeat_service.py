@@ -66,7 +66,7 @@ async def generate_weekly_review(user_id: int) -> str | None:
             ],
             temperature=0.7,
             timeout=15,
-            tier="pro",
+
         )
         return chat.choices[0].message.content if chat else None
 
@@ -119,7 +119,7 @@ async def generate_goal_checkin(user_id: int) -> str | None:
             ],
             temperature=0.7,
             timeout=15,
-            tier="pro",
+
         )
         return chat.choices[0].message.content if chat else None
 
@@ -217,7 +217,7 @@ async def generate_evening_wrapup(user_id: int) -> str | None:
             ],
             temperature=0.7,
             timeout=15,
-            tier="pro",
+
         )
         return chat.choices[0].message.content if chat else None
 

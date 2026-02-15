@@ -203,7 +203,7 @@ class QueryService:
             ],
             temperature=0.7,
             timeout=15,
-            tier="pro",
+
         )
         if not chat_completion:
             return "Something went wrong. Try again."

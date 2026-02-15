@@ -178,7 +178,7 @@ async def route_intent(text: str) -> RouterResponse:
             response_format={"type": "json_object"},
             temperature=0.1,
             timeout=10,
-            tier="flash",
+
         )
 
         if not response:
