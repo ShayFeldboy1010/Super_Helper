@@ -202,7 +202,8 @@ class QueryService:
                 {"role": "user", "content": user_content}
             ],
             temperature=0.7,
-            timeout=8,
+            timeout=15,
+            tier="pro",
         )
         if not chat_completion:
             return "Something went wrong. Try again."

@@ -76,7 +76,8 @@ async def generate_synergy_insights(
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.8,
-        timeout=8,
+        timeout=15,
+        tier="pro",
     )
     if not chat_completion:
         return "Synergy analysis unavailable."

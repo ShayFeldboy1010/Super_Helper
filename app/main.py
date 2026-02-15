@@ -38,53 +38,39 @@ _CONFIRM_TTL = 120  # 2 minutes
 
 
 async def _hand_off_to_processor(update_data: dict):
-    """Send '...' placeholder, then fire off processing to a separate function."""
+    """Send placeholder, then process directly (no Vercel timeout workaround needed on Render)."""
     try:
-        # Extract chat info from the update
         msg = update_data.get("message", {})
         chat_id = msg.get("chat", {}).get("id")
         user_id = msg.get("from", {}).get("id")
         text = msg.get("text")
 
         if not chat_id or not text:
-            # Non-text update (sticker, photo, etc.) — process via dispatcher
             update = types.Update(**update_data)
             await dp.feed_update(bot, update)
             return
 
-        # ID Guard — only respond to authorized user
         if user_id != settings.TELEGRAM_USER_ID:
             logger.warning(f"Unauthorized user {user_id}")
             return
 
-        # Typing indicator (Batch 4)
         await bot.send_chat_action(chat_id=chat_id, action="typing")
-
-        # Send placeholder immediately (will be edited with real response)
-        status = await bot.send_message(chat_id=chat_id, text="⏳")
+        status = await bot.send_message(chat_id=chat_id, text="\u23f3")
         status_msg_id = status.message_id
 
-        # Build base URL from WEBHOOK_URL
-        base_url = settings.WEBHOOK_URL.rsplit("/webhook", 1)[0]
-
-        # Fire off to /api/process — a NEW Vercel function with its own 10s
-        payload = {
-            "update_data": update_data,
-            "status_msg_id": status_msg_id,
-        }
+        # Process directly — Render has no 10s function timeout
         async with httpx.AsyncClient(timeout=2) as client:
             try:
                 await client.post(
-                    f"{base_url}/api/process",
-                    json=payload,
+                    f"{settings.WEBHOOK_URL.rsplit('/webhook', 1)[0]}/api/process",
+                    json={"update_data": update_data, "status_msg_id": status_msg_id},
                     headers={"X-Internal-Secret": settings.M_WEBHOOK_SECRET},
                 )
             except (httpx.TimeoutException, httpx.ConnectError):
-                pass  # Expected — we don't wait for the response
+                pass  # Fire-and-forget
 
     except Exception as e:
         logger.error(f"Hand-off error: {e}")
-        # Fallback: process directly in this function
         try:
             update = types.Update(**update_data)
             await dp.feed_update(bot, update)
@@ -422,9 +408,9 @@ async def process_message(request: Request):
 
         # --- Timeout wrapper (Batch 2) ---
         try:
-            await asyncio.wait_for(_process_core(), timeout=8.5)
+            await asyncio.wait_for(_process_core(), timeout=25)
         except asyncio.TimeoutError:
-            logger.error("Processing timed out after 8.5s")
+            logger.error("Processing timed out after 25s")
             try:
                 await bot.edit_message_text(
                     text="That took too long, try again.",
@@ -449,9 +435,37 @@ async def process_message(request: Request):
         return JSONResponse({"status": "error"})
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @app.get("/")
 async def root():
     return {"message": "Telegram Command Center is running"}
+
+
+# --- Keep-alive self-ping (Render free tier sleeps after 15 min) ---
+async def _self_ping():
+    """Ping /health every 13 min to prevent Render free-tier sleep."""
+    await asyncio.sleep(60)  # Wait for startup
+    render_url = settings.RENDER_URL
+    if not render_url:
+        logger.info("RENDER_URL not set, self-ping disabled")
+        return
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.get(f"{render_url}/health")
+        except Exception:
+            pass
+        await asyncio.sleep(780)  # 13 minutes
+
+
+@app.on_event("startup")
+async def on_startup():
+    asyncio.create_task(_self_ping())
+
 
 @app.get("/setup-webhook")
 async def setup_webhook():

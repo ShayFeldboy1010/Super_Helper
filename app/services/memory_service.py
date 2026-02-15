@@ -1,9 +1,12 @@
 import logging
 import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from app.core.database import supabase
 from app.core.llm import llm_call
 
 logger = logging.getLogger(__name__)
+TZ = ZoneInfo("Asia/Jerusalem")
 
 # Maps action_type to relevant insight categories
 CATEGORY_MAP = {
@@ -129,6 +132,110 @@ Return JSON in this format:
 If there are no new insights, return empty lists."""
 
 
+FOLLOWUP_EXTRACTION_PROMPT = """You analyze conversations between a user and a personal assistant.
+Your goal: extract action items, commitments, and things the user said they'd do.
+
+Look for patterns like:
+- "I'll do X", "I need to send X", "Let me think about X"
+- "I should call/email/message someone"
+- "I'll handle that tomorrow/next week"
+- "Remind me to...", "Don't let me forget..."
+
+Do NOT extract:
+- Tasks that were already created via the task system (bot confirmed task creation)
+- Vague intentions with no concrete action ("I guess I could...")
+- Things the bot will do (not the user)
+
+Return JSON:
+{
+  "follow_ups": [
+    {
+      "commitment": "Short description of what they committed to",
+      "source_quote": "The exact or near-exact quote from the conversation",
+      "suggested_due": "YYYY-MM-DD or null if no timeframe mentioned"
+    }
+  ]
+}
+
+If no commitments found, return {"follow_ups": []}."""
+
+
+async def extract_follow_ups(user_id: int) -> int:
+    """Extract follow-ups from today's conversations. Returns count of new follow-ups."""
+    try:
+        today_str = datetime.now(TZ).strftime("%Y-%m-%d")
+        resp = (
+            supabase.table("interaction_log")
+            .select("user_message, bot_response, action_type")
+            .eq("user_id", user_id)
+            .in_("action_type", ["query", "note", "calendar"])
+            .gte("created_at", f"{today_str}T00:00:00")
+            .order("created_at", desc=True)
+            .limit(30)
+            .execute()
+        )
+        interactions = resp.data or []
+        if not interactions:
+            return 0
+
+        conversation_block = "\n---\n".join(
+            f"User: {ix['user_message']}\nBot: {ix['bot_response']}"
+            for ix in interactions
+        )
+
+        chat_completion = await llm_call(
+            messages=[
+                {"role": "system", "content": FOLLOWUP_EXTRACTION_PROMPT},
+                {"role": "user", "content": conversation_block},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.3,
+            timeout=10,
+            tier="flash",
+        )
+        if not chat_completion:
+            return 0
+
+        result = json.loads(chat_completion.choices[0].message.content)
+        count = 0
+        for fu in result.get("follow_ups", []):
+            try:
+                payload = {
+                    "user_id": user_id,
+                    "commitment": fu["commitment"],
+                    "source_message": fu.get("source_quote", ""),
+                }
+                if fu.get("suggested_due"):
+                    payload["due_at"] = fu["suggested_due"]
+                supabase.table("follow_ups").insert(payload).execute()
+                count += 1
+            except Exception as e:
+                logger.error(f"Failed to insert follow-up: {e}")
+
+        return count
+    except Exception as e:
+        logger.error(f"Follow-up extraction error: {e}")
+        return 0
+
+
+async def get_pending_follow_ups(user_id: int, limit: int = 5) -> list[dict]:
+    """Get pending follow-ups ordered by due date."""
+    try:
+        resp = (
+            supabase.table("follow_ups")
+            .select("id, commitment, due_at, reminded_count, extracted_at")
+            .eq("user_id", user_id)
+            .eq("status", "pending")
+            .order("due_at", desc=False)
+            .limit(limit)
+            .execute()
+        )
+        return resp.data or []
+    except Exception as e:
+        logger.error(f"Failed to get follow-ups: {e}")
+        return []
+
+
 async def run_daily_reflection(user_id: int) -> dict:
     """
     Fetch unprocessed interactions, extract insights via LLM,
@@ -187,7 +294,8 @@ async def run_daily_reflection(user_id: int) -> dict:
             ],
             response_format={"type": "json_object"},
             temperature=0.3,
-            timeout=8,
+            timeout=15,
+            tier="pro",
         )
         if not chat_completion:
             logger.error("LLM returned None for daily reflection")

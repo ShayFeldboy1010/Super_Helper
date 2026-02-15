@@ -1,16 +1,16 @@
-name: Morning Briefing
+name: Meeting Prep Check
 
 on:
   schedule:
-    # 06:00 UTC = 08:00 Israel winter / 09:00 Israel summer
-    - cron: '0 6 * * *'
-  workflow_dispatch: # Allow manual trigger
+    # Every 15 min, 06:00-17:00 UTC (08:00-20:00 Israel), Sun-Thu
+    - cron: '*/15 6-17 * * 0,1,2,3,4'
+  workflow_dispatch:
 
 jobs:
-  send-briefing:
+  check-meetings:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Morning Briefing
+      - name: Check Upcoming Meetings
         env:
           RENDER_URL: ${{ secrets.RENDER_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -20,8 +20,8 @@ jobs:
             exit 0
           fi
 
-          echo "Sending morning briefing..."
-          curl -sf -X GET "$RENDER_URL/api/cron/daily-brief" \
+          echo "Checking upcoming meetings..."
+          curl -sf -X GET "$RENDER_URL/api/cron/meeting-prep" \
             -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json" \
             --max-time 30

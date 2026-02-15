@@ -8,14 +8,18 @@ class Settings(BaseSettings):
     SUPABASE_KEY: str
     GROQ_API_KEY: str
     NVIDIA_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL_FLASH: str = "gemini-2.5-flash"
+    GEMINI_MODEL_PRO: str = "gemini-2.5-pro"
     SECRET_KEY: str = "default-secret-key-change-in-production"
     M_WEBHOOK_SECRET: str
-    WEBHOOK_URL: str = "https://super-helper-theta.vercel.app/webhook"
-    
+    WEBHOOK_URL: str = "https://ai-super-man.onrender.com/webhook"
+    RENDER_URL: str = ""
+
     # Google Auth
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str = "https://super-helper-theta.vercel.app/auth/callback" 
+    GOOGLE_REDIRECT_URI: str = "https://ai-super-man.onrender.com/auth/callback"
     
     # Market
     STOCK_WATCHLIST: str = "NVDA,MSFT,GOOGL,META,AAPL"
@@ -23,6 +27,11 @@ class Settings(BaseSettings):
 
     # Search
     BRAVE_SEARCH_API_KEY: str = ""
+
+    # Proactive Alerts
+    ALERT_KEY_CONTACTS: str = ""  # Comma-separated: "boss@co.com,partner@co.com"
+    ALERT_URGENT_KEYWORDS: str = "urgent,asap,emergency,critical,deadline,immediately"
+    STOCK_ALERT_THRESHOLD: float = 3.0  # % move that triggers alert
 
     # Defaults
     API_V1_STR: str = "/api/v1"

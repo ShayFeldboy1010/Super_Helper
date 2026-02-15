@@ -224,6 +224,140 @@ class GoogleService:
             logger.error(f"Gmail API error: {e}")
             return []
 
+    async def get_upcoming_events_detailed(self, minutes_ahead: int = 20) -> List[Dict[str, Any]]:
+        """Fetch events starting within the next N minutes, with attendee info."""
+        if not self.creds:
+            if not await self.authenticate():
+                return []
+
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo("Asia/Jerusalem")
+            service = build('calendar', 'v3', credentials=self.creds)
+
+            now = datetime.now(tz)
+            window_end = now + timedelta(minutes=minutes_ahead)
+
+            events_result = service.events().list(
+                calendarId='primary',
+                timeMin=now.isoformat(),
+                timeMax=window_end.isoformat(),
+                maxResults=5,
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+
+            events = events_result.get('items', [])
+            detailed = []
+            for event in events:
+                start_raw = event['start'].get('dateTime', event['start'].get('date'))
+                # Skip all-day events (no time component)
+                if 'T' not in start_raw:
+                    continue
+
+                end_raw = event['end'].get('dateTime', event['end'].get('date'))
+
+                # Parse attendees, filter out resource rooms
+                attendees = []
+                for att in event.get('attendees', []):
+                    email = att.get('email', '')
+                    if '@group.calendar.google.com' in email:
+                        continue
+                    attendees.append({
+                        'name': att.get('displayName', email.split('@')[0]),
+                        'email': email,
+                    })
+
+                detailed.append({
+                    "event_id": event.get('id', ''),
+                    "summary": event.get('summary', '(no title)'),
+                    "start": start_raw,
+                    "end": end_raw,
+                    "location": event.get('location', ''),
+                    "description": event.get('description', ''),
+                    "attendees": attendees,
+                    "recurring_event_id": event.get('recurringEventId', ''),
+                })
+            return detailed
+
+        except Exception as e:
+            logger.error(f"Upcoming events detailed API error: {e}")
+            return []
+
+    async def search_emails_from_sender(self, sender_email: str, max_results: int = 3) -> List[Dict[str, str]]:
+        """Search Gmail for recent emails from a specific sender."""
+        if not self.creds:
+            if not await self.authenticate():
+                return []
+
+        try:
+            service = build('gmail', 'v1', credentials=self.creds)
+            results = service.users().messages().list(
+                userId='me',
+                q=f"from:{sender_email}",
+                maxResults=max_results,
+            ).execute()
+            messages = results.get('messages', [])
+
+            emails = []
+            for msg_meta in messages:
+                msg = service.users().messages().get(
+                    userId='me', id=msg_meta['id'], format='metadata',
+                    metadataHeaders=['From', 'Subject', 'Date']
+                ).execute()
+
+                headers = {h['name']: h['value'] for h in msg.get('payload', {}).get('headers', [])}
+                emails.append({
+                    'from': headers.get('From', 'Unknown'),
+                    'subject': headers.get('Subject', '(no subject)'),
+                    'date': headers.get('Date', ''),
+                    'snippet': msg.get('snippet', ''),
+                })
+            return emails
+
+        except Exception as e:
+            logger.error(f"Gmail sender search error for {sender_email}: {e}")
+            return []
+
+    async def get_recent_unread_emails(self, max_results: int = 10, minutes_back: int = 35) -> List[Dict[str, str]]:
+        """Fetch recent unread emails from inbox."""
+        if not self.creds:
+            if not await self.authenticate():
+                return []
+
+        try:
+            import time
+            service = build('gmail', 'v1', credentials=self.creds)
+            cutoff_epoch = int(time.time()) - (minutes_back * 60)
+
+            results = service.users().messages().list(
+                userId='me',
+                q=f"is:unread after:{cutoff_epoch}",
+                labelIds=['INBOX'],
+                maxResults=max_results,
+            ).execute()
+            messages = results.get('messages', [])
+
+            emails = []
+            for msg_meta in messages:
+                msg = service.users().messages().get(
+                    userId='me', id=msg_meta['id'], format='metadata',
+                    metadataHeaders=['From', 'Subject']
+                ).execute()
+
+                headers = {h['name']: h['value'] for h in msg.get('payload', {}).get('headers', [])}
+                emails.append({
+                    'id': msg_meta['id'],
+                    'from': headers.get('From', 'Unknown'),
+                    'subject': headers.get('Subject', '(no subject)'),
+                    'snippet': msg.get('snippet', ''),
+                })
+            return emails
+
+        except Exception as e:
+            logger.error(f"Gmail unread fetch error: {e}")
+            return []
+
     async def get_unread_count(self) -> int:
         """Return the count of unread emails in the inbox."""
         if not self.creds:
