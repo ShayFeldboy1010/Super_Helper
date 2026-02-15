@@ -408,9 +408,9 @@ async def process_message(request: Request):
 
         # --- Timeout wrapper (Batch 2) ---
         try:
-            await asyncio.wait_for(_process_core(), timeout=25)
+            await asyncio.wait_for(_process_core(), timeout=55)
         except asyncio.TimeoutError:
-            logger.error("Processing timed out after 25s")
+            logger.error("Processing timed out after 55s")
             try:
                 await bot.edit_message_text(
                     text="That took too long, try again.",

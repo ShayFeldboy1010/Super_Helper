@@ -140,7 +140,7 @@ async def _groq_call(
 
 async def llm_call(
     messages: list[dict],
-    timeout: float = 15.0,
+    timeout: float = 30.0,
     temperature: float = 0.7,
     response_format: dict | None = None,
     tier: str = "flash",
