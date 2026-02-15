@@ -9,8 +9,8 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str
     NVIDIA_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL_FLASH: str = "gemini-2.5-flash"
-    GEMINI_MODEL_PRO: str = "gemini-2.5-pro"
+    GEMINI_MODEL_FLASH: str = "gemini-3-flash-preview"
+    GEMINI_MODEL_PRO: str = "gemini-3-flash-preview"
     SECRET_KEY: str = "default-secret-key-change-in-production"
     M_WEBHOOK_SECRET: str
     WEBHOOK_URL: str = "https://super-helper.onrender.com/webhook"
