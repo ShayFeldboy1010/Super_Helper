@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_KEY: str
     GROQ_API_KEY: str
+    NVIDIA_API_KEY: str = ""
     SECRET_KEY: str = "default-secret-key-change-in-production"
     M_WEBHOOK_SECRET: str
     WEBHOOK_URL: str = "https://super-helper-theta.vercel.app/webhook"

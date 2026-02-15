@@ -5,6 +5,7 @@ supabase
 python-dotenv
 pydantic-settings
 groq
+openai
 apscheduler
 cryptography
 google-auth
