@@ -196,9 +196,6 @@ class QueryService:
         else:
             user_content = query_text
 
-        # Enable thinking for complex queries (ones that fetched external data)
-        use_thinking = bool(context_data)
-
         chat_completion = await llm_call(
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -206,7 +203,6 @@ class QueryService:
             ],
             temperature=0.7,
             timeout=8,
-            thinking=use_thinking,
         )
         if not chat_completion:
             return "Something went wrong. Try again."
