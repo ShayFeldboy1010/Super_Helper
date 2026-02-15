@@ -13,13 +13,13 @@ class Settings(BaseSettings):
     GEMINI_MODEL_PRO: str = "gemini-2.5-pro"
     SECRET_KEY: str = "default-secret-key-change-in-production"
     M_WEBHOOK_SECRET: str
-    WEBHOOK_URL: str = "https://ai-super-man.onrender.com/webhook"
+    WEBHOOK_URL: str = "https://super-helper.onrender.com/webhook"
     RENDER_URL: str = ""
 
     # Google Auth
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str = "https://ai-super-man.onrender.com/auth/callback"
+    GOOGLE_REDIRECT_URI: str = "https://super-helper.onrender.com/auth/callback"
     
     # Market
     STOCK_WATCHLIST: str = "NVDA,MSFT,GOOGL,META,AAPL"
