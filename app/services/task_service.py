@@ -66,6 +66,9 @@ async def create_task(user_id: int, task_data):
     # Recurring tasks (Batch 7)
     if data.get('recurrence'):
         payload["recurrence"] = data['recurrence']
+    # Effort estimation
+    if data.get('effort'):
+        payload["effort"] = data['effort']
 
     try:
         # Ensure user exists to avoid FK violation

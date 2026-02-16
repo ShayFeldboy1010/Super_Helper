@@ -359,4 +359,29 @@ async def run_daily_reflection(user_id: int) -> dict:
     except Exception as e:
         logger.error(f"Daily reflection error: {e}")
 
+    # 8. Insight confidence decay — reduce unreinforced insights by ~2%/week
+    try:
+        from datetime import timedelta
+        week_ago = (datetime.now(TZ) - timedelta(days=7)).isoformat()
+        stale = (
+            supabase.table("permanent_insights")
+            .select("id, confidence")
+            .eq("user_id", user_id)
+            .eq("is_active", True)
+            .lt("last_reinforced_at", week_ago)
+            .gt("confidence", 0.3)
+            .limit(50)
+            .execute()
+        )
+        for ins in (stale.data or []):
+            new_conf = round(max(0.3, ins["confidence"] - 0.02), 3)
+            supabase.table("permanent_insights").update({
+                "confidence": new_conf,
+            }).eq("id", ins["id"]).execute()
+        decayed = len(stale.data or [])
+        if decayed:
+            logger.info(f"Decayed confidence for {decayed} stale insights")
+    except Exception as e:
+        logger.warning(f"Insight decay failed (non-critical): {e}")
+
     return summary

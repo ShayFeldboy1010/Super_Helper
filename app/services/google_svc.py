@@ -358,6 +358,91 @@ class GoogleService:
             logger.error(f"Gmail unread fetch error: {e}")
             return []
 
+    async def find_free_slots(self, duration_minutes: int = 60, days_ahead: int = 3, max_slots: int = 3) -> List[Dict[str, Any]]:
+        """Find free calendar slots in the next N days for a given duration."""
+        if not self.creds:
+            if not await self.authenticate():
+                return []
+
+        try:
+            from zoneinfo import ZoneInfo
+            tz = ZoneInfo("Asia/Jerusalem")
+            service = build('calendar', 'v3', credentials=self.creds)
+
+            now = datetime.now(tz)
+            end_range = now + timedelta(days=days_ahead)
+
+            events_result = service.events().list(
+                calendarId='primary',
+                timeMin=now.isoformat(),
+                timeMax=end_range.isoformat(),
+                maxResults=50,
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+
+            events = events_result.get('items', [])
+
+            # Build busy intervals
+            busy = []
+            for event in events:
+                start_raw = event['start'].get('dateTime')
+                end_raw = event['end'].get('dateTime')
+                if start_raw and end_raw:
+                    busy.append((
+                        datetime.fromisoformat(start_raw),
+                        datetime.fromisoformat(end_raw),
+                    ))
+
+            # Find gaps in working hours (08:00-20:00)
+            slots = []
+            for day_offset in range(days_ahead):
+                day = (now + timedelta(days=day_offset)).date()
+                work_start = datetime.combine(day, datetime.min.time().replace(hour=8)).replace(tzinfo=tz)
+                work_end = datetime.combine(day, datetime.min.time().replace(hour=20)).replace(tzinfo=tz)
+
+                # Start from now if today
+                if day == now.date():
+                    work_start = max(work_start, now + timedelta(minutes=15))
+
+                # Get busy intervals for this day
+                day_busy = sorted([
+                    (max(s, work_start), min(e, work_end))
+                    for s, e in busy
+                    if s.date() == day or e.date() == day
+                ], key=lambda x: x[0])
+
+                # Find gaps
+                cursor = work_start
+                for b_start, b_end in day_busy:
+                    if b_start > cursor and (b_start - cursor).total_seconds() >= duration_minutes * 60:
+                        slots.append({
+                            "start": cursor.isoformat(),
+                            "end": (cursor + timedelta(minutes=duration_minutes)).isoformat(),
+                            "day": day.strftime("%A %d/%m"),
+                            "time": f"{cursor.strftime('%H:%M')}-{(cursor + timedelta(minutes=duration_minutes)).strftime('%H:%M')}",
+                        })
+                        if len(slots) >= max_slots:
+                            return slots
+                    cursor = max(cursor, b_end)
+
+                # Check after last event
+                if cursor < work_end and (work_end - cursor).total_seconds() >= duration_minutes * 60:
+                    slots.append({
+                        "start": cursor.isoformat(),
+                        "end": (cursor + timedelta(minutes=duration_minutes)).isoformat(),
+                        "day": day.strftime("%A %d/%m"),
+                        "time": f"{cursor.strftime('%H:%M')}-{(cursor + timedelta(minutes=duration_minutes)).strftime('%H:%M')}",
+                    })
+                    if len(slots) >= max_slots:
+                        return slots
+
+            return slots
+
+        except Exception as e:
+            logger.error(f"Find free slots error: {e}")
+            return []
+
     async def get_unread_count(self) -> int:
         """Return the count of unread emails in the inbox."""
         if not self.creds:

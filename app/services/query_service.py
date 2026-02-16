@@ -42,7 +42,7 @@ class QueryService:
             logger.error(f"Error fetching recent conversation: {e}")
             return ""
 
-    async def answer_query(self, query_text: str, context_needed: list[str], target_date: str = None, memory_context: str = "") -> str:
+    async def answer_query(self, query_text: str, context_needed: list[str], target_date: str = None, memory_context: str = "", archive_since: str = None) -> str:
         # --- Parallel context fetching ---
         async def _fetch_calendar():
             events = await self.google.get_events_for_date(target_date)
@@ -53,15 +53,29 @@ class QueryService:
             response = supabase.table("tasks").select("*").eq("user_id", self.user_id).eq("status", "pending").execute()
             tasks = response.data
             if tasks:
-                task_list = "\n".join([f"- {t['title']} (Due: {t.get('due_at')})" for t in tasks])
+                task_list = "\n".join([f"- {t['title']} (Due: {t.get('due_at')}, Effort: {t.get('effort', '-')})" for t in tasks])
                 return f"✅ Open tasks:\n{task_list}"
             return "✅ No open tasks."
 
         async def _fetch_archive():
             from app.services.archive_service import search_archive
-            notes = await search_archive(self.user_id, query_text, limit=10)
+            from datetime import datetime as _dt, timedelta as _td
+            from zoneinfo import ZoneInfo as _ZI
+            # Compute since date from archive_since
+            since_date = None
+            if archive_since:
+                now = _dt.now(_ZI("Asia/Jerusalem"))
+                if archive_since == "today":
+                    since_date = now.strftime("%Y-%m-%d")
+                elif archive_since == "week":
+                    since_date = (now - _td(days=7)).strftime("%Y-%m-%d")
+                elif archive_since == "month":
+                    since_date = (now - _td(days=30)).strftime("%Y-%m-%d")
+                elif archive_since == "year":
+                    since_date = (now - _td(days=365)).strftime("%Y-%m-%d")
+            notes = await search_archive(self.user_id, query_text, limit=10, since=since_date)
             if notes:
-                note_list = "\n".join([f"- {n['content']} (Tags: {n['tags']})" for n in notes])
+                note_list = "\n".join([f"- {n['content'][:150]} (Tags: {n['tags']})" for n in notes])
                 return f"📝 Saved notes:\n{note_list}"
             return "📝 No matching notes found in archive."
 

@@ -59,6 +59,18 @@ User: "תמחק את המשימה של הרופא"
   "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Delete task: doctor"}},
   "task": {{"action": "delete", "title": "הרופא"}}
 }}
+Example - create with effort:
+User: "תזכיר לי לכתוב API docs, זה כשעתיים עבודה"
+{{
+  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Create task with effort estimate"}},
+  "task": {{"action": "create", "title": "לכתוב API docs", "due_date": "2026-02-17 09:00:00", "priority": 1, "effort": "2h"}}
+}}
+Example - schedule task in calendar:
+User: "תזמן את המשימה של ה-API docs ביומן" / "תקבע לי זמן למשימה"
+{{
+  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Schedule task in calendar"}},
+  "task": {{"action": "schedule", "title": "API docs"}}
+}}
 
 2. **calendar**: A specific event with a time/place.
 Hebrew example:
@@ -102,6 +114,11 @@ User: "מה שמרתי על כלי AI?"
 {{
   "classification": {{"action_type": "query", "confidence": 0.9, "summary": "Search archive about AI tools"}},
   "query": {{"query": "מה שמרתי על כלי AI?", "context_needed": ["archive"], "target_date": null}}
+}}
+User: "מה שמרתי השבוע?" / "מה שמרתי בחודש האחרון?"
+{{
+  "classification": {{"action_type": "query", "confidence": 0.9, "summary": "Recent archive items"}},
+  "query": {{"query": "מה שמרתי השבוע?", "context_needed": ["archive"], "target_date": null, "archive_since": "week"}}
 }}
 User: "מה זה FastAPI?"
 {{
@@ -151,8 +168,11 @@ Rules:
   - Edit keywords: "שנה", "עדכן", "דחה", "postpone", "reschedule", "rename"
   - Delete keywords: "מחק", "תמחק", "הסר", "delete", "remove"
   - Recurring keywords: "כל יום", "כל שבוע", "כל חודש", "every day", "daily", "weekly", "monthly"
+  - Schedule keywords: "תזמן", "תקבע ביומן", "schedule", "find time for" — use action "schedule" with the task title
+  - Effort keywords: when the user mentions duration like "שעתיים", "חצי שעה", "2 hours", "30 minutes" — add "effort" field: "15m", "30m", "1h", "2h", or "4h"
   - If the user just MENTIONS something but doesn't explicitly ask — classify as "query" or "chat".
 - **ARCHIVE SEARCH**: When the user asks "מה שמרתי על", "what did I save about X" — classify as "query" with context_needed=["archive"].
+- **ARCHIVE TEMPORAL**: When the user asks "מה שמרתי השבוע/היום/בחודש האחרון", add "archive_since" field: "today", "week", "month", or "year".
 - **CRITICAL**: For all dates and times, convert to ABSOLUTE `YYYY-MM-DD HH:MM:SS` format based on "Current Date/Time". Do NOT return relative strings.
 - **CRITICAL**: When the user mentions a day name, calculate the actual date using "Day of week" provided above.
 - When in doubt between "task" and "query", prefer "query".

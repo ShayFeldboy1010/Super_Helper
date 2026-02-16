@@ -25,51 +25,71 @@ async def search_archive(
     query: str,
     tags: Optional[List[str]] = None,
     limit: int = 10,
+    since: Optional[str] = None,
 ) -> List[dict]:
-    """Full-text search on the archive table. Requires fts column + GIN index."""
+    """Full-text search on the archive table. Requires fts column + GIN index.
+
+    Args:
+        since: ISO date string (YYYY-MM-DD) to filter results after this date.
+    """
     try:
         results = []
 
         # FTS search
         if query and query.strip():
-            words = [w for w in query.strip().split() if len(w) > 1]
+            import re as _re
+            words = [_re.sub(r'[^\w\u0590-\u05FF]', '', w) for w in query.strip().split()]
+            words = [w for w in words if len(w) > 1]
             if words:
                 ts_query = " | ".join(words)
                 try:
-                    fts_resp = (
+                    q = (
                         supabase.table("archive")
                         .select("content, tags, created_at")
                         .eq("user_id", user_id)
                         .text_search("fts", ts_query)
-                        .limit(limit)
-                        .execute()
                     )
+                    if since:
+                        q = q.gte("created_at", f"{since}T00:00:00")
+                    fts_resp = q.order("created_at", desc=True).limit(limit).execute()
                     results.extend(fts_resp.data or [])
                 except Exception as e:
                     logger.warning(f"Archive FTS failed, falling back to basic: {e}")
-                    # Fallback: ilike search
-                    fallback = (
+                    q = (
                         supabase.table("archive")
                         .select("content, tags, created_at")
                         .eq("user_id", user_id)
                         .ilike("content", f"%{words[0]}%")
-                        .order("created_at", desc=True)
-                        .limit(limit)
-                        .execute()
                     )
+                    if since:
+                        q = q.gte("created_at", f"{since}T00:00:00")
+                    fallback = q.order("created_at", desc=True).limit(limit).execute()
                     results.extend(fallback.data or [])
 
-        # Optional tag filter
-        if tags and not results:
-            tag_resp = (
+        # Time-only search (no query text, just "what did I save this week")
+        if not results and since and not (query and query.strip()):
+            time_resp = (
                 supabase.table("archive")
                 .select("content, tags, created_at")
                 .eq("user_id", user_id)
-                .overlaps("tags", tags)
+                .gte("created_at", f"{since}T00:00:00")
                 .order("created_at", desc=True)
                 .limit(limit)
                 .execute()
             )
+            results.extend(time_resp.data or [])
+
+        # Optional tag filter
+        if tags and not results:
+            q = (
+                supabase.table("archive")
+                .select("content, tags, created_at")
+                .eq("user_id", user_id)
+                .overlaps("tags", tags)
+            )
+            if since:
+                q = q.gte("created_at", f"{since}T00:00:00")
+            tag_resp = q.order("created_at", desc=True).limit(limit).execute()
             results.extend(tag_resp.data or [])
 
         return results[:limit]

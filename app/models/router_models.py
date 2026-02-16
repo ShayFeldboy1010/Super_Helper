@@ -7,12 +7,13 @@ class ActionClassification(BaseModel):
     summary: str = Field(..., description="A brief summary of the user's request.")
 
 class TaskPayload(BaseModel):
-    action: Literal["create", "complete", "complete_all", "delete", "edit"] = "create"
+    action: Literal["create", "complete", "complete_all", "delete", "edit", "schedule"] = "create"
     title: str = ""
     due_date: Optional[str] = None
     time: Optional[str] = None
     priority: int = 0  # 0=Low, 1=Medium, 2=High, 3=Urgent
     category: Optional[str] = None
+    effort: Optional[Literal["15m", "30m", "1h", "2h", "4h"]] = None
     # Edit fields (Batch 6)
     new_title: Optional[str] = None
     new_due_date: Optional[str] = None
@@ -35,6 +36,7 @@ class QueryPayload(BaseModel):
     query: str
     context_needed: list[Literal["calendar", "tasks", "archive", "email", "web", "synergy", "news", "market"]] = []
     target_date: Optional[str] = None  # YYYY-MM-DD for date-specific queries
+    archive_since: Optional[Literal["today", "week", "month", "year"]] = None
 
 class RouterResponse(BaseModel):
     classification: ActionClassification

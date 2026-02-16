@@ -86,6 +86,37 @@ def _cancel_confirmation(user_id: int):
         pass
 
 
+async def _transcribe_voice(file_id: str) -> str | None:
+    """Download Telegram voice message and transcribe via Gemini."""
+    try:
+        from google import genai
+        from google.genai import types as genai_types
+        import io
+
+        file_info = await bot.get_file(file_id)
+        file_bytes = io.BytesIO()
+        await bot.download_file(file_info.file_path, file_bytes)
+        audio_data = file_bytes.getvalue()
+
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=settings.GEMINI_MODEL_FALLBACK,  # 2.0 Flash handles audio
+                contents=[
+                    genai_types.Content(parts=[
+                        genai_types.Part.from_bytes(data=audio_data, mime_type="audio/ogg"),
+                        genai_types.Part.from_text("Transcribe this audio message to text. Return ONLY the transcribed text, nothing else. The language is likely Hebrew."),
+                    ]),
+                ],
+            ),
+            timeout=15,
+        )
+        return response.text.strip() if response.text else None
+    except Exception as e:
+        logger.error(f"Voice transcription failed: {e}")
+        return None
+
+
 async def _process_update(update_data: dict):
     """Process a Telegram update directly in background (no HTTP self-call needed on Render)."""
     chat_id = None
@@ -97,6 +128,30 @@ async def _process_update(update_data: dict):
         user_id = msg.get("from", {}).get("id")
         text = msg.get("text")
         update_id = update_data.get("update_id")
+
+        # --- Voice message transcription ---
+        voice = msg.get("voice") or msg.get("audio")
+        if voice and not text:
+            if user_id != settings.TELEGRAM_USER_ID:
+                return
+            await bot.send_chat_action(chat_id=chat_id, action="typing")
+            status = await bot.send_message(chat_id=chat_id, text="🎤 מתמלל...")
+            transcribed = await _transcribe_voice(voice["file_id"])
+            if transcribed:
+                text = transcribed
+                try:
+                    await bot.edit_message_text(
+                        text=f"🎤 \"{transcribed}\"\n\n⏳",
+                        chat_id=chat_id, message_id=status.message_id,
+                    )
+                except Exception:
+                    pass
+            else:
+                await bot.edit_message_text(
+                    text="לא הצלחתי לתמלל את ההודעה הקולית.",
+                    chat_id=chat_id, message_id=status.message_id,
+                )
+                return
 
         if not chat_id or not text:
             update = types.Update(**update_data)
@@ -170,6 +225,28 @@ async def _process_update(update_data: dict):
                     elif action_name == "create_task":
                         task = await create_task(user_id, action_data)
                         bot_response = f"נוסף: {task['title']}" if task else "משהו השתבש בשמירת המשימה."
+                    elif action_name == "schedule_task":
+                        # User selected a slot number (1, 2, 3)
+                        slot_idx = None
+                        for ch in text.strip():
+                            if ch.isdigit() and 1 <= int(ch) <= 3:
+                                slot_idx = int(ch) - 1
+                                break
+                        slots = action_data.get("slots", [])
+                        if slot_idx is not None and slot_idx < len(slots):
+                            slot = slots[slot_idx]
+                            google_svc = GoogleService(user_id)
+                            if await google_svc.authenticate():
+                                start_dt = datetime.fromisoformat(slot["start"])
+                                end_dt = datetime.fromisoformat(slot["end"])
+                                link = await google_svc.create_calendar_event(
+                                    action_data["task_title"], start_dt, end_dt=end_dt,
+                                )
+                                bot_response = f"נקבע: {action_data['task_title']}\n{slot['day']} {slot['time']}\n{link}" if link else "לא הצלחתי ליצור אירוע."
+                            else:
+                                bot_response = "שגיאה בחיבור ל-Google."
+                        else:
+                            bot_response = "בוטל."
                     else:
                         bot_response = "בוצע."
                     await edit_status(bot_response)
@@ -240,6 +317,31 @@ async def _process_update(update_data: dict):
 
             bot_response = None
 
+            # --- Ambiguous input suggestions ---
+            if intent.classification.confidence < 0.55 and action_type not in ("chat",):
+                suggestions = []
+                if intent.task:
+                    suggestions.append(f"1. משימה: \"{intent.task.title}\"")
+                if intent.query:
+                    suggestions.append(f"{'2' if suggestions else '1'}. שאלה: \"{intent.query.query[:50]}\"")
+                suggestions.append(f"{len(suggestions)+1}. שיחה חופשית")
+                bot_response = f"לא בטוח מה התכוונת. אפשרויות:\n" + "\n".join(suggestions) + "\n\nשלח את המספר או נסח מחדש."
+                _save_confirmation(user_id, "disambiguate", {
+                    "original_text": text,
+                    "options": {
+                        "1": action_type,
+                        "2": "query" if len(suggestions) > 2 else "chat",
+                        "3": "chat",
+                    },
+                })
+                await edit_status(bot_response)
+                await log_interaction(
+                    user_id=user_id, user_message=text, bot_response=bot_response,
+                    action_type="system", intent_summary="Ambiguous input",
+                    telegram_update_id=update_id,
+                )
+                return
+
             if action_type == "task" and intent.task:
                 action = getattr(intent.task, 'action', 'create')
 
@@ -271,6 +373,37 @@ async def _process_update(update_data: dict):
                 elif action == "delete":
                     _save_confirmation(user_id, "delete", {"title": intent.task.title})
                     bot_response = f"עומד למחוק: \"{intent.task.title}\"\nשלח 'כן' לאישור."
+
+                elif action == "schedule":
+                    # Find the task and suggest free calendar slots
+                    existing = await get_pending_tasks(user_id, limit=50)
+                    from app.services.task_service import _match_task
+                    match = _match_task(existing, intent.task.title) if existing else None
+                    if not match:
+                        bot_response = f"לא מצאתי משימה בשם \"{intent.task.title}\" לתזמון."
+                    else:
+                        google = GoogleService(user_id)
+                        if not await google.authenticate():
+                            login_url = settings.GOOGLE_REDIRECT_URI.replace("/auth/callback", "/auth/login")
+                            bot_response = f"צריך לחבר Google קודם:\n{login_url}"
+                        else:
+                            # Parse effort to minutes
+                            effort_map = {"15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240}
+                            effort_str = match.get("effort", "1h")
+                            duration = effort_map.get(effort_str, 60)
+                            slots = await google.find_free_slots(duration_minutes=duration, days_ahead=3, max_slots=3)
+                            if slots:
+                                lines = [f"חלונות פנויים ל-\"{match['title']}\" ({effort_str}):"]
+                                for i, s in enumerate(slots, 1):
+                                    lines.append(f"{i}. {s['day']} {s['time']}")
+                                lines.append("\nשלח את המספר לקביעה, או אמור 'לא' לביטול.")
+                                bot_response = "\n".join(lines)
+                                _save_confirmation(user_id, "schedule_task", {
+                                    "task_title": match["title"],
+                                    "slots": slots,
+                                })
+                            else:
+                                bot_response = "לא מצאתי חלונות פנויים ב-3 הימים הקרובים."
 
                 elif action == "edit":
                     # Task editing (Batch 6)
@@ -327,7 +460,9 @@ async def _process_update(update_data: dict):
                                 due_str = f"\n📅 {task['due_at']}"
                         recurrence = task_data.get('recurrence')
                         recur_str = f"\n🔄 חוזר {recurrence}" if recurrence else ""
-                        bot_response = f"נוסף: {task['title']}{due_str}{recur_str}"
+                        effort = task_data.get('effort')
+                        effort_str = f"\n⏱ {effort}" if effort else ""
+                        bot_response = f"נוסף: {task['title']}{due_str}{recur_str}{effort_str}"
                     else:
                         bot_response = "משהו השתבש בשמירת המשימה. נסה שוב?"
 
@@ -406,7 +541,8 @@ async def _process_update(update_data: dict):
                 query_text = intent.query.query if intent.query else text
                 target_date = intent.query.target_date if intent.query else None
                 context_needed = intent.query.context_needed if intent.query else []
-                bot_response = await qs.answer_query(query_text, context_needed, target_date, memory_context)
+                archive_since = getattr(intent.query, 'archive_since', None) if intent.query else None
+                bot_response = await qs.answer_query(query_text, context_needed, target_date, memory_context, archive_since=archive_since)
 
             else:
                 bot_response = "לא בטוח מה לעשות עם זה."
