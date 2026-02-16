@@ -1,4 +1,4 @@
-"""Centralised LLM wrapper — Gemini Flash primary + Groq fallback."""
+"""Centralised LLM wrapper — Gemini 2.5 Flash → Gemini 2.0 Flash → Groq (emergency)."""
 import asyncio
 import logging
 import re
@@ -80,9 +80,9 @@ async def _gemini_call(
     timeout: float,
     temperature: float,
     response_format: dict | None,
+    model: str,
 ) -> _CompatResponse | None:
-    """Call Gemini Flash with 1 retry."""
-    model = settings.GEMINI_MODEL
+    """Call a Gemini model with 1 retry."""
     system_text, user_text = _convert_messages(messages)
 
     config_kwargs: dict = {"temperature": temperature}
@@ -119,7 +119,7 @@ async def _groq_call(
     temperature: float,
     response_format: dict | None,
 ) -> object | None:
-    """Call Groq as fallback. Returns native ChatCompletion (already compatible)."""
+    """Call Groq as emergency fallback. Returns native ChatCompletion (already compatible)."""
     call_kwargs: dict = dict(
         model=GROQ_MODEL,
         messages=messages,
@@ -137,10 +137,10 @@ async def _groq_call(
             return result
         except Exception as e:
             if attempt == 0:
-                logger.warning(f"Groq fallback attempt 1 failed ({e}), retrying in 1s...")
+                logger.warning(f"Groq emergency attempt 1 failed ({e}), retrying in 1s...")
                 await asyncio.sleep(1)
             else:
-                logger.error(f"Groq fallback failed after 2 attempts: {e}")
+                logger.error(f"Groq emergency failed after 2 attempts: {e}")
     return None
 
 
@@ -151,18 +151,24 @@ async def llm_call(
     response_format: dict | None = None,
     **kwargs,
 ) -> object | None:
-    """Call LLM: Gemini Flash (primary) -> Groq (fallback) -> None.
+    """Call LLM: Gemini 2.5 Flash → Gemini 2.0 Flash → Groq (emergency) → None.
 
     Returns a ChatCompletion-compatible object or None.
     Caller accesses .choices[0].message.content as before.
     """
-    # 1. Try Gemini Flash
-    result = await _gemini_call(messages, timeout, temperature, response_format)
+    # 1. Try Gemini 2.5 Flash (primary)
+    result = await _gemini_call(messages, timeout, temperature, response_format, settings.GEMINI_MODEL)
     if result:
         return result
 
-    # 2. Fallback to Groq
-    logger.info("Falling back to Groq...")
+    # 2. Fallback to Gemini 2.0 Flash
+    logger.info("Falling back to Gemini 2.0 Flash...")
+    result = await _gemini_call(messages, timeout, temperature, response_format, settings.GEMINI_MODEL_FALLBACK)
+    if result:
+        return result
+
+    # 3. Emergency fallback to Groq
+    logger.info("Emergency fallback to Groq...")
     result = await _groq_call(messages, timeout, temperature, response_format)
     if result:
         return result
