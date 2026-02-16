@@ -10,7 +10,6 @@ async def save_note(user_id: int, content: str, tags: Optional[List[str]] = None
             "user_id": user_id,
             "content": content,
             "tags": tags or [],
-            "metadata": {}
         }
 
         response = supabase.table("archive").insert(payload).execute()
@@ -39,7 +38,7 @@ async def search_archive(
                 try:
                     fts_resp = (
                         supabase.table("archive")
-                        .select("content, tags, metadata, created_at")
+                        .select("content, tags, created_at")
                         .eq("user_id", user_id)
                         .text_search("fts", ts_query)
                         .limit(limit)
@@ -51,7 +50,7 @@ async def search_archive(
                     # Fallback: ilike search
                     fallback = (
                         supabase.table("archive")
-                        .select("content, tags, metadata, created_at")
+                        .select("content, tags, created_at")
                         .eq("user_id", user_id)
                         .ilike("content", f"%{words[0]}%")
                         .order("created_at", desc=True)
@@ -64,7 +63,7 @@ async def search_archive(
         if tags and not results:
             tag_resp = (
                 supabase.table("archive")
-                .select("content, tags, metadata, created_at")
+                .select("content, tags, created_at")
                 .eq("user_id", user_id)
                 .overlaps("tags", tags)
                 .order("created_at", desc=True)
@@ -90,17 +89,15 @@ async def save_url_knowledge(
 ) -> Optional[dict]:
     """Save URL content as a knowledge entry in the archive."""
     try:
+        full_content = f"{title}\n\n{summary}"
+        if key_points:
+            full_content += "\n\n" + "\n".join(f"- {kp}" for kp in key_points)
+        full_content += f"\n\nSource: {url}"
+
         payload = {
             "user_id": user_id,
-            "content": summary,
+            "content": full_content,
             "tags": tags or [],
-            "metadata": {
-                "type": "url",
-                "url": url,
-                "title": title,
-                "key_points": key_points,
-                "original_content_preview": content[:500],
-            },
         }
         response = supabase.table("archive").insert(payload).execute()
         return response.data[0] if response.data else None
