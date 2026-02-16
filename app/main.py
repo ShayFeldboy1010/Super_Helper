@@ -189,14 +189,10 @@ async def process_message(request: Request):
                         telegram_update_id=update_id,
                     )
                     return
-                elif text_lower in ("כן", "yes", "confirm", "אישור"):
-                    await edit_status("Nothing pending to confirm.")
-                    return
 
             # Cancel confirmation on any other message
-            if text_lower not in ("כן", "yes", "confirm", "אישור"):
-                if user_id in _pending_confirmations:
-                    _pending_confirmations.pop(user_id, None)
+            if user_id in _pending_confirmations:
+                _pending_confirmations.pop(user_id, None)
 
             # URL interception
             urls = extract_urls(text)
