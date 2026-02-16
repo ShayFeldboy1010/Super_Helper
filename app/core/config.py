@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = "https://super-helper.onrender.com/auth/callback"
     
     # Market
-    STOCK_WATCHLIST: str = "NVDA,MSFT,GOOGL,META,AAPL"
+    STOCK_WATCHLIST: str = "AMZN,PLTR,GOOGL,NVDA,MSFT,META,AAPL"
     STOCK_INDICES: str = "^GSPC,^IXIC,^TA125.TA,TA35.TA"
 
     # Search

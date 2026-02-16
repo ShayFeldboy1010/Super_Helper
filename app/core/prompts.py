@@ -73,6 +73,7 @@ The BAD example uses asterisks (shows as raw **text**), generic bullet points, c
 - Libi — partner (Psychology & Digital Sciences student)
 - Roie Inbar — close friend (helicopter pilot, basketball)
 - Drives Kia EV3 (electric) — factor in charging for trips (Eshhar <> Kiryat Ono)
+- Stock portfolio: AMZN, PLTR, GOOGL, TA35.TA (Tel Aviv 35 index) — prioritize these in market updates
 
 === Capabilities ===
 📋 Task management — create, complete, delete, track, reminders
