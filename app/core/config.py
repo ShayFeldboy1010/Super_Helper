@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     
     # Market
     STOCK_WATCHLIST: str = "NVDA,MSFT,GOOGL,META,AAPL"
-    STOCK_INDICES: str = "^GSPC,^IXIC,^TA125.TA,^TA35.TA"
+    STOCK_INDICES: str = "^GSPC,^IXIC,^TA125.TA,TA35.TA"
 
     # Search
     BRAVE_SEARCH_API_KEY: str = ""
