@@ -1,6 +1,7 @@
 """Centralised LLM wrapper — Gemini Flash primary + Groq fallback."""
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 
 from google import genai
@@ -35,8 +36,21 @@ class _CompatResponse:
     choices: list[_Choice] = field(default_factory=lambda: [_Choice()])
 
 
+def _strip_markdown(text: str) -> str:
+    """Remove markdown formatting that breaks Telegram plain text."""
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)  # **bold**
+    text = re.sub(r'\*(.+?)\*', r'\1', text)       # *italic*
+    text = re.sub(r'__(.+?)__', r'\1', text)       # __underline__
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)  # # headers
+    text = re.sub(r'```[\s\S]*?```', '', text)     # ```code blocks```
+    text = re.sub(r'`(.+?)`', r'\1', text)         # `inline code`
+    text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)  # [links](url)
+    text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)  # > blockquotes
+    return text.strip()
+
+
 def _wrap_gemini_response(response) -> _CompatResponse:
-    text = response.text or ""
+    text = _strip_markdown(response.text or "")
     return _CompatResponse(choices=[_Choice(message=_Message(content=text))])
 
 
