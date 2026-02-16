@@ -43,135 +43,129 @@ class QueryService:
             return ""
 
     async def answer_query(self, query_text: str, context_needed: list[str], target_date: str = None, memory_context: str = "") -> str:
-        context_data = []
-
-        # 1. Fetch Calendar if explicitly needed
-        if "calendar" in context_needed:
+        # --- Parallel context fetching ---
+        async def _fetch_calendar():
             events = await self.google.get_events_for_date(target_date)
             date_label = target_date if target_date else "today"
-            context_data.append(f"📅 Events for {date_label}:\n" + "\n".join(events))
+            return f"📅 Events for {date_label}:\n" + "\n".join(events)
 
-        # 2. Fetch Tasks if explicitly needed
-        if "tasks" in context_needed:
-            try:
-                response = supabase.table("tasks").select("*").eq("user_id", self.user_id).eq("status", "pending").execute()
-                tasks = response.data
-                if tasks:
-                    task_list = "\n".join([f"- {t['title']} (Due: {t.get('due_at')})" for t in tasks])
-                    context_data.append(f"✅ Open tasks:\n{task_list}")
-                else:
-                    context_data.append("✅ No open tasks.")
-            except Exception as e:
-                logger.error(f"Error fetching tasks: {e}")
+        async def _fetch_tasks():
+            response = supabase.table("tasks").select("*").eq("user_id", self.user_id).eq("status", "pending").execute()
+            tasks = response.data
+            if tasks:
+                task_list = "\n".join([f"- {t['title']} (Due: {t.get('due_at')})" for t in tasks])
+                return f"✅ Open tasks:\n{task_list}"
+            return "✅ No open tasks."
 
-        # 3. Fetch Notes / Archive search
-        if "notes" in context_needed or "archive" in context_needed:
-            try:
-                from app.services.archive_service import search_archive
-                notes = await search_archive(self.user_id, query_text, limit=10)
-                if notes:
-                    note_list = "\n".join([f"- {n['content']} (Tags: {n['tags']})" for n in notes])
-                    context_data.append(f"📝 Saved notes:\n{note_list}")
-                else:
-                    context_data.append("📝 No matching notes found in archive.")
-            except Exception as e:
-                logger.error(f"Error fetching notes: {e}")
+        async def _fetch_archive():
+            from app.services.archive_service import search_archive
+            notes = await search_archive(self.user_id, query_text, limit=10)
+            if notes:
+                note_list = "\n".join([f"- {n['content']} (Tags: {n['tags']})" for n in notes])
+                return f"📝 Saved notes:\n{note_list}"
+            return "📝 No matching notes found in archive."
 
-        # 4. Fetch Emails
-        if "email" in context_needed:
-            try:
-                emails = await self.google.get_recent_emails(max_results=5)
-                if emails:
-                    email_lines = []
-                    for e in emails:
-                        email_lines.append(f"- From: {e['from']} | Subject: {e['subject']}\n  {e['snippet'][:100]}")
-                    context_data.append(f"📧 Recent emails:\n" + "\n".join(email_lines))
-                else:
-                    context_data.append("📧 No recent emails.")
-            except Exception as e:
-                logger.error(f"Error fetching emails: {e}")
+        async def _fetch_email():
+            emails = await self.google.get_recent_emails(max_results=5)
+            if emails:
+                email_lines = [f"- From: {e['from']} | Subject: {e['subject']}\n  {e['snippet'][:100]}" for e in emails]
+                return f"📧 Recent emails:\n" + "\n".join(email_lines)
+            return "📧 No recent emails."
 
-        # 5. Web Search
-        if "web" in context_needed:
-            try:
-                results = await web_search(query_text, max_results=5)
-                if results:
-                    context_data.append(f"🌐 Search results:\n{format_search_results(results)}")
-            except Exception as e:
-                logger.error(f"Error in web search: {e}")
+        async def _fetch_web():
+            results = await web_search(query_text, max_results=5)
+            if results:
+                return f"🌐 Search results:\n{format_search_results(results)}"
+            return None
 
-        # 6. AI News (RSS feeds — reliable, no API key needed)
-        if "news" in context_needed:
-            try:
-                news_items = await fetch_ai_news(max_items=5, hours_back=24)
-                if news_items:
-                    lines = []
-                    for n in news_items:
-                        summary = f"\n  {n['summary'][:120]}" if n.get("summary") else ""
-                        lines.append(f"- {n['title']} ({n['source']}){summary}")
-                    context_data.append(f"🤖 AI News (live):\n" + "\n".join(lines))
-                else:
-                    context_data.append("🤖 No recent AI news found.")
-            except Exception as e:
-                logger.error(f"Error fetching AI news: {e}")
-
-        # 7. Market Data (Yahoo Finance — real-time prices)
-        if "market" in context_needed:
-            try:
-                # Detect specific tickers the user asked about
-                specific_tickers = extract_tickers_from_query(query_text)
-                # Remove tickers already in the default watchlist to avoid duplicates
-                default_tickers = {"NVDA", "MSFT", "GOOGL", "META", "AAPL"}
-                extra_tickers = [t for t in specific_tickers if t not in default_tickers]
-
-                # Fetch default watchlist + any extra tickers in parallel
-                fetches = [fetch_market_data()]
-                if extra_tickers:
-                    fetches.append(fetch_symbols(extra_tickers))
-
-                results = await asyncio.gather(*fetches, return_exceptions=True)
-                market = results[0] if isinstance(results[0], dict) else {"indices": [], "tickers": []}
-                extra_data = results[1] if len(results) > 1 and isinstance(results[1], list) else []
-
+        async def _fetch_news():
+            news_items = await fetch_ai_news(max_items=5, hours_back=24)
+            if news_items:
                 lines = []
-                # Show specifically requested tickers first
-                for t in extra_data:
-                    arrow = "🟢" if t["change_pct"] >= 0 else "🔴"
-                    lines.append(f"{arrow} {t['name']}: ${t['price']:,.2f} ({t['change_pct']:+.1f}%)")
-                for idx in market.get("indices", []):
-                    arrow = "🟢" if idx["change_pct"] >= 0 else "🔴"
-                    lines.append(f"{arrow} {idx['name']}: {idx['price']:,.0f} ({idx['change_pct']:+.1f}%)")
-                for t in market.get("tickers", []):
-                    arrow = "🟢" if t["change_pct"] >= 0 else "🔴"
-                    lines.append(f"{arrow} {t['name']}: ${t['price']:,.2f} ({t['change_pct']:+.1f}%)")
-                if lines:
-                    context_data.append(f"📊 Market Data (live):\n" + "\n".join(lines))
-                else:
-                    context_data.append("📊 No market data available.")
-            except Exception as e:
-                logger.error(f"Error fetching market data: {e}")
+                for n in news_items:
+                    summary = f"\n  {n['summary'][:120]}" if n.get("summary") else ""
+                    lines.append(f"- {n['title']} ({n['source']}){summary}")
+                return f"🤖 AI News (live):\n" + "\n".join(lines)
+            return "🤖 No recent AI news found."
 
-        # 8. Synergy — AI-market opportunity analysis
-        if "synergy" in context_needed:
-            try:
-                news, market = await asyncio.gather(
-                    fetch_ai_news(max_items=5, hours_back=24),
-                    fetch_market_data(),
-                    return_exceptions=True,
-                )
-                if isinstance(news, Exception):
-                    news = []
-                if isinstance(market, Exception):
-                    market = {"indices": [], "tickers": []}
+        async def _fetch_market():
+            specific_tickers = extract_tickers_from_query(query_text)
+            default_tickers = {"NVDA", "MSFT", "GOOGL", "META", "AAPL"}
+            extra_tickers = [t for t in specific_tickers if t not in default_tickers]
+            fetches = [fetch_market_data()]
+            if extra_tickers:
+                fetches.append(fetch_symbols(extra_tickers))
+            results = await asyncio.gather(*fetches, return_exceptions=True)
+            market = results[0] if isinstance(results[0], dict) else {"indices": [], "tickers": []}
+            extra_data = results[1] if len(results) > 1 and isinstance(results[1], list) else []
+            lines = []
+            for t in extra_data:
+                arrow = "🟢" if t["change_pct"] >= 0 else "🔴"
+                lines.append(f"{arrow} {t['name']}: ${t['price']:,.2f} ({t['change_pct']:+.1f}%)")
+            for idx in market.get("indices", []):
+                arrow = "🟢" if idx["change_pct"] >= 0 else "🔴"
+                lines.append(f"{arrow} {idx['name']}: {idx['price']:,.0f} ({idx['change_pct']:+.1f}%)")
+            for t in market.get("tickers", []):
+                arrow = "🟢" if t["change_pct"] >= 0 else "🔴"
+                lines.append(f"{arrow} {t['name']}: ${t['price']:,.2f} ({t['change_pct']:+.1f}%)")
+            if lines:
+                return f"📊 Market Data (live):\n" + "\n".join(lines)
+            return "📊 No market data available."
 
-                user_insights = await get_relevant_insights(self.user_id, action_type="query", query_text=query_text)
-                synergy = await generate_synergy_insights(news, market, user_insights)
-                context_data.append(f"💡 Market-AI Synergy:\n{synergy}")
-            except Exception as e:
-                logger.error(f"Error in synergy analysis: {e}")
+        async def _fetch_synergy():
+            news, market = await asyncio.gather(
+                fetch_ai_news(max_items=5, hours_back=24),
+                fetch_market_data(),
+                return_exceptions=True,
+            )
+            if isinstance(news, Exception):
+                news = []
+            if isinstance(market, Exception):
+                market = {"indices": [], "tickers": []}
+            user_insights = await get_relevant_insights(self.user_id, action_type="query", query_text=query_text)
+            synergy = await generate_synergy_insights(news, market, user_insights)
+            return f"💡 Market-AI Synergy:\n{synergy}"
 
-        # 9. Recent conversation for continuity
-        recent_convo = await self._get_recent_conversation(limit=5)
+        # Build parallel fetch list based on context_needed
+        fetch_map = {
+            "calendar": _fetch_calendar,
+            "tasks": _fetch_tasks,
+            "archive": _fetch_archive,
+            "notes": _fetch_archive,
+            "email": _fetch_email,
+            "web": _fetch_web,
+            "news": _fetch_news,
+            "market": _fetch_market,
+            "synergy": _fetch_synergy,
+        }
+
+        # Deduplicate (notes/archive map to same func)
+        seen_funcs = set()
+        fetch_tasks = []
+        fetch_labels = []
+        for ctx in context_needed:
+            func = fetch_map.get(ctx)
+            if func and id(func) not in seen_funcs:
+                seen_funcs.add(id(func))
+                fetch_tasks.append(func())
+                fetch_labels.append(ctx)
+
+        # Always fetch conversation in parallel too
+        fetch_tasks.append(self._get_recent_conversation(limit=5))
+        fetch_labels.append("_conversation")
+
+        # Run ALL fetches in parallel
+        results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+
+        context_data = []
+        recent_convo = ""
+        for label, result in zip(fetch_labels, results):
+            if label == "_conversation":
+                recent_convo = result if isinstance(result, str) else ""
+            elif isinstance(result, Exception):
+                logger.error(f"Error fetching {label}: {result}")
+            elif result:
+                context_data.append(result)
 
         # 10. Build system prompt with all context
         full_context = "\n\n".join(context_data) if context_data else ""

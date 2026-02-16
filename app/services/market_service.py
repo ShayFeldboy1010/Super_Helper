@@ -108,7 +108,7 @@ async def _fetch_symbol(client: httpx.AsyncClient, symbol: str) -> dict | None:
 
 
 async def fetch_symbols(symbols: list[str]) -> list[dict]:
-    """Fetch price data for specific ticker symbols. Cached 60s by sorted symbols."""
+    """Fetch price data for specific ticker symbols. Cached 5min by sorted symbols."""
     if not symbols:
         return []
     from app.core.cache import cache_get, cache_set
@@ -124,12 +124,12 @@ async def fetch_symbols(symbols: list[str]) -> list[dict]:
             return_exceptions=True,
         )
     data = [r for r in results if isinstance(r, dict)]
-    cache_set(cache_key, data, 60)
+    cache_set(cache_key, data, 300)
     return data
 
 
 async def fetch_market_data() -> dict:
-    """Fetch market data for configured indices and tickers. Cached 60s."""
+    """Fetch market data for configured indices and tickers. Cached 5min."""
     from app.core.cache import cache_get, cache_set
 
     cached = cache_get("market_data")
@@ -158,5 +158,5 @@ async def fetch_market_data() -> dict:
                 tickers.append(result)
 
     result = {"indices": indices, "tickers": tickers}
-    cache_set("market_data", result, 60)
+    cache_set("market_data", result, 300)
     return result

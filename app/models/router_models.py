@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Literal
 
 class ActionClassification(BaseModel):
-    action_type: Literal["task", "calendar", "note", "query"] = Field(..., description="The type of action to perform.")
+    action_type: Literal["task", "calendar", "note", "query", "chat"] = Field(..., description="The type of action to perform.")
     confidence: float = Field(..., description="Confidence score between 0 and 1.")
     summary: str = Field(..., description="A brief summary of the user's request.")
 

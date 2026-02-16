@@ -1,6 +1,8 @@
 import asyncio
 import time
 import httpx
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Request
 from starlette.background import BackgroundTask
 from starlette.responses import JSONResponse
@@ -31,10 +33,57 @@ app.include_router(auth.router)
 from app.bot.routers import cron
 app.include_router(cron.router)
 
-# --- Confirmation flow (Batch 5) ---
-# Stores pending destructive actions: user_id -> (action_name, data_dict, timestamp)
-_pending_confirmations: dict[int, tuple[str, dict, float]] = {}
+# --- Confirmation flow (persisted to Supabase) ---
 _CONFIRM_TTL = 120  # 2 minutes
+
+
+def _save_confirmation(user_id: int, action_name: str, action_data: dict):
+    """Save a pending confirmation to Supabase."""
+    try:
+        supabase.table("pending_confirmations").upsert({
+            "user_id": user_id,
+            "action_name": action_name,
+            "action_data": action_data,
+            "created_at": datetime.now(ZoneInfo("Asia/Jerusalem")).isoformat(),
+        }, on_conflict="user_id").execute()
+    except Exception as e:
+        logger.warning(f"Failed to save confirmation to DB: {e}")
+
+
+def _get_confirmation(user_id: int) -> tuple[str, dict] | None:
+    """Retrieve and delete a pending confirmation from Supabase."""
+    try:
+        resp = (
+            supabase.table("pending_confirmations")
+            .select("action_name, action_data, created_at")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if not resp.data:
+            return None
+        row = resp.data[0]
+        # Check TTL
+        created = datetime.fromisoformat(row["created_at"])
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=ZoneInfo("Asia/Jerusalem"))
+        age = (datetime.now(ZoneInfo("Asia/Jerusalem")) - created).total_seconds()
+        # Delete regardless (consumed or expired)
+        supabase.table("pending_confirmations").delete().eq("user_id", user_id).execute()
+        if age > _CONFIRM_TTL:
+            return None
+        return (row["action_name"], row["action_data"])
+    except Exception as e:
+        logger.warning(f"Failed to get confirmation from DB, falling back: {e}")
+        return None
+
+
+def _cancel_confirmation(user_id: int):
+    """Cancel any pending confirmation."""
+    try:
+        supabase.table("pending_confirmations").delete().eq("user_id", user_id).execute()
+    except Exception:
+        pass
 
 
 async def _process_update(update_data: dict):
@@ -90,7 +139,6 @@ async def _process_update(update_data: dict):
         )
         from app.services.google_svc import GoogleService
         from app.services.archive_service import save_note
-        from datetime import datetime
 
         async def edit_status(new_text: str):
             try:
@@ -107,18 +155,21 @@ async def _process_update(update_data: dict):
             # Typing indicator (Batch 4)
             await bot.send_chat_action(chat_id=chat_id, action="typing")
 
-            # --- Confirmation check (Batch 5) ---
+            # --- Confirmation check (persisted in Supabase) ---
             text_lower = text.strip().lower()
             if text_lower in ("כן", "yes", "confirm", "אישור"):
-                pending = _pending_confirmations.pop(user_id, None)
-                if pending and (time.time() - pending[2]) < _CONFIRM_TTL:
-                    action_name, action_data, _ = pending
+                pending = _get_confirmation(user_id)
+                if pending:
+                    action_name, action_data = pending
                     if action_name == "complete_all":
                         count = await complete_all_tasks(user_id)
                         bot_response = f"סיימתי! סימנתי {count} משימות כבוצעו ✅" if count > 0 else "אין משימות פתוחות."
                     elif action_name == "delete":
                         result = await delete_task(user_id, action_data["title"])
                         bot_response = f"נמחק: {result['title']} 🗑" if result else f"לא מצאתי את \"{action_data['title']}\"."
+                    elif action_name == "create_task":
+                        task = await create_task(user_id, action_data)
+                        bot_response = f"נוסף: {task['title']}" if task else "משהו השתבש בשמירת המשימה."
                     else:
                         bot_response = "בוצע."
                     await edit_status(bot_response)
@@ -130,8 +181,7 @@ async def _process_update(update_data: dict):
                     return
 
             # Cancel confirmation on any other message
-            if user_id in _pending_confirmations:
-                _pending_confirmations.pop(user_id, None)
+            _cancel_confirmation(user_id)
 
             # URL interception
             urls = extract_urls(text)
@@ -167,7 +217,7 @@ async def _process_update(update_data: dict):
 
             # --- Parallel intent + memory (Batch 3) ---
             intent_result, memory_result = await asyncio.gather(
-                route_intent(text),
+                route_intent(text, user_id=user_id),
                 get_relevant_insights(user_id=user_id, action_type="query", query_text=text),
                 return_exceptions=True,
             )
@@ -213,14 +263,13 @@ async def _process_update(update_data: dict):
                     if count == 0:
                         bot_response = "אין משימות פתוחות."
                     else:
-                        _pending_confirmations[user_id] = ("complete_all", {}, time.time())
+                        _save_confirmation(user_id, "complete_all", {})
                         task_list = "\n".join([f"  - {t['title']}" for t in pending[:10]])
                         extra = f"\n  ... ועוד {count - 10}" if count > 10 else ""
                         bot_response = f"עומד לסמן {count} משימות כבוצעו:\n{task_list}{extra}\n\nשלח 'כן' לאישור."
 
                 elif action == "delete":
-                    # Confirmation flow (Batch 5)
-                    _pending_confirmations[user_id] = ("delete", {"title": intent.task.title}, time.time())
+                    _save_confirmation(user_id, "delete", {"title": intent.task.title})
                     bot_response = f"עומד למחוק: \"{intent.task.title}\"\nשלח 'כן' לאישור."
 
                 elif action == "edit":
@@ -251,7 +300,22 @@ async def _process_update(update_data: dict):
                             bot_response = f"לא מצאתי \"{intent.task.title}\" — אין משימות פתוחות."
 
                 else:
+                    # --- Duplicate detection ---
                     task_data = intent.task.model_dump()
+                    existing = await get_pending_tasks(user_id, limit=50)
+                    if existing:
+                        from app.services.task_service import _match_task
+                        dup = _match_task(existing, task_data.get("title", ""))
+                        if dup:
+                            bot_response = f"כבר יש משימה דומה: \"{dup['title']}\"\nרוצה שאוסיף בכל זאת?"
+                            _save_confirmation(user_id, "create_task", task_data)
+                            await edit_status(bot_response)
+                            await log_interaction(
+                                user_id=user_id, user_message=text, bot_response=bot_response,
+                                action_type="task", intent_summary="Duplicate detected",
+                                telegram_update_id=update_id,
+                            )
+                            return
                     task = await create_task(user_id, task_data)
                     if task:
                         due_str = ""
@@ -322,6 +386,20 @@ async def _process_update(update_data: dict):
                     bot_response = f"נשמר: {intent.note.content}\n{tags_str}"
                 else:
                     bot_response = "לא הצלחתי לשמור."
+
+            elif action_type == "chat":
+                # Lightweight chat — no context fetching, just LLM with identity
+                from app.core.llm import llm_call as _llm
+                from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
+                chat_resp = await _llm(
+                    messages=[
+                        {"role": "system", "content": CHIEF_OF_STAFF_IDENTITY},
+                        {"role": "user", "content": text},
+                    ],
+                    temperature=0.8,
+                    timeout=10,
+                )
+                bot_response = chat_resp.choices[0].message.content if chat_resp else "הנה אני, מה קורה?"
 
             elif action_type == "query":
                 qs = QueryService(user_id)
