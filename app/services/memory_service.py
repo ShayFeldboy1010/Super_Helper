@@ -71,7 +71,10 @@ async def get_relevant_insights(
 
         # Tier 2: FTS keyword search if query_text has substance
         if query_text and len(query_text.strip()) > 2:
-            words = [w for w in query_text.strip().split() if len(w) > 1]
+            import re as _re
+            # Sanitize: keep only alphanumeric + Hebrew chars, remove colons/special chars
+            words = [_re.sub(r'[^\w\u0590-\u05FF]', '', w) for w in query_text.strip().split()]
+            words = [w for w in words if len(w) > 1]
             if words:
                 ts_query = " | ".join(words)
                 try:
