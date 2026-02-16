@@ -134,3 +134,8 @@ dmypy.json
 # mac
 .DS_Store
 .vercel
+
+# AI agents
+.agent/
+.agents/
+.claude/

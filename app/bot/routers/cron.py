@@ -30,13 +30,13 @@ async def _check_task_reminders(user_id: int) -> int:
             if task.get('due_at'):
                 try:
                     dt = datetime.fromisoformat(task['due_at'])
-                    due_str = f"\nWas due: {dt.strftime('%a %b %d, %H:%M')}"
+                    due_str = f"\nהיה אמור להיות ב: {dt.strftime('%d/%m %H:%M')}"
                 except (ValueError, TypeError):
-                    due_str = f"\nWas due: {task['due_at']}"
+                    due_str = f"\nהיה אמור להיות ב: {task['due_at']}"
             msg = (
-                f"🚨 Hey, you still haven't done this:\n"
+                f"🚨 עדיין לא עשית את זה:\n"
                 f"{task['title']}{due_str}\n\n"
-                f"Get it done or tell me to drop it 💪"
+                f"תטפל בזה או תגיד לי למחוק 💪"
             )
             await bot.send_message(chat_id=user_id, text=msg)
         except Exception as e:
@@ -122,7 +122,7 @@ async def _check_stock_alerts(user_id: int) -> int:
         if not movers:
             return 0
 
-        msg = "📊 Stock Alert — Big moves today:\n" + "\n".join(movers)
+        msg = "📊 התראת שוק — תזוזות גדולות היום:\n" + "\n".join(movers)
         await bot.send_message(chat_id=user_id, text=msg)
         return len(movers)
 
@@ -176,10 +176,10 @@ async def _check_weather_alert(user_id: int) -> int:
 
         if max_prob >= 60:
             msg = (
-                f"🌧 Weather Alert — Rain expected!\n"
-                f"Precipitation probability: up to {max_prob}%\n"
-                f"Likely hours: {', '.join(rain_hours[:4])}\n"
-                f"Take an umbrella ☂️"
+                f"🌧 התראת מזג אוויר — צפוי גשם!\n"
+                f"סיכוי למשקעים: עד {max_prob}%\n"
+                f"שעות צפויות: {', '.join(rain_hours[:4])}\n"
+                f"קח מטריה ☂️"
             )
             await bot.send_message(chat_id=user_id, text=msg)
             cache_set(f"weather_alert:{today_str}", True, 86400)
@@ -221,11 +221,11 @@ async def _check_followup_reminders(user_id: int) -> int:
         try:
             due_str = ""
             if fu.get("due_at"):
-                due_str = f"\nWas due: {fu['due_at'][:10]}"
+                due_str = f"\nהיה אמור להיות ב: {fu['due_at'][:10]}"
             msg = (
-                f"🔄 Follow-up reminder:\n"
+                f"🔄 תזכורת המשך:\n"
                 f"{fu['commitment']}{due_str}\n\n"
-                f"Still on your plate — handle it or tell me to drop it"
+                f"עדיין על הצלחת — תטפל או תגיד לי לוותר"
             )
             await bot.send_message(chat_id=user_id, text=msg)
 
@@ -344,9 +344,9 @@ async def daily_brief():
             task_str = "\n".join([f"• {t['title']}" for t in tasks])
 
         msg = (
-            f"Morning Briefing\n\n"
-            f"📅 Calendar:\n{calendar_str}\n\n"
-            f"✅ Tasks:\n{task_str}"
+            f"בריפינג בוקר\n\n"
+            f"📅 יומן:\n{calendar_str}\n\n"
+            f"✅ משימות:\n{task_str}"
         )
         await bot.send_message(chat_id=user_id, text=msg)
         return {"status": "ok", "message": "Basic briefing sent (fallback)"}
@@ -424,11 +424,11 @@ async def daily_reflection():
     if result["new_insights"] > 0 or result["reinforced_insights"] > 0 or followup_count > 0:
         try:
             msg = (
-                f"🧠 Daily Reflection Summary\n"
-                f"Interactions analyzed: {result['interactions_analyzed']}\n"
-                f"New insights: {result['new_insights']}\n"
-                f"Reinforced insights: {result['reinforced_insights']}\n"
-                f"Follow-ups extracted: {followup_count}"
+                f"🧠 סיכום רפלקציה יומית\n"
+                f"אינטראקציות שנותחו: {result['interactions_analyzed']}\n"
+                f"תובנות חדשות: {result['new_insights']}\n"
+                f"תובנות שהתחזקו: {result['reinforced_insights']}\n"
+                f"פעולות המשך: {followup_count}"
             )
             await bot.send_message(chat_id=user_id, text=msg)
         except Exception as e:

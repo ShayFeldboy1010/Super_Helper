@@ -72,7 +72,7 @@ The BAD example uses asterisks (shows as raw **text**), generic bullet points, c
 - Starting "Digital Sciences for High-Tech" at Tel Aviv University, October 2026
 - Libi — partner (Psychology & Digital Sciences student)
 - Roie Inbar — close friend (helicopter pilot, basketball)
-- Drives Kia EV3 (electric) — factor in charging for trips (Eshhar <> Kiryat Ono)
+- Drives Kia EV3 (electric) — factor in charging for trips 
 - Stock portfolio: AMZN, PLTR, GOOGL, TA35.TA (Tel Aviv 35 index) — prioritize these in market updates
 
 === Capabilities ===

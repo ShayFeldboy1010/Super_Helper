@@ -42,7 +42,7 @@ def detect_conflicts(events: list[dict]) -> list[str]:
 
 def _format_events_context(events: list[dict]) -> str:
     if not events:
-        return "No events today."
+        return "אין אירועים היום."
     lines = []
     for ev in events:
         start = ev.get("start", "")
@@ -59,7 +59,7 @@ def _format_events_context(events: list[dict]) -> str:
 
 def _format_news_context(news: list[dict]) -> str:
     if not news:
-        return "No new AI news."
+        return "אין חדשות AI חדשות."
     lines = [f"• {n['title']} ({n['source']})" for n in news[:5]]
     return "\n".join(lines)
 
@@ -72,12 +72,12 @@ def _format_market_context(market: dict) -> str:
     for t in market.get("tickers", []):
         arrow = "🟢" if t["change_pct"] >= 0 else "🔴"
         lines.append(f"{arrow} {t['name']}: ${t['price']:,.2f} ({t['change_pct']:+.1f}%)")
-    return "\n".join(lines) if lines else "No market data available."
+    return "\n".join(lines) if lines else "אין נתוני שוק."
 
 
 def _format_tasks_context(tasks: list[dict]) -> str:
     if not tasks:
-        return "No open tasks."
+        return "אין משימות פתוחות."
     lines = []
     for t in tasks[:7]:
         due = f" (due: {t.get('due_at', 'none')})" if t.get("due_at") else ""
@@ -105,25 +105,25 @@ def _compute_day_profile(events: list[dict], tasks: list[dict]) -> str:
             except (ValueError, TypeError):
                 pass
 
-    parts = [f"Today is {day_name}."]
+    parts = [f"היום {day_name}."]
 
     # Day-of-week context
     if day_num == 6:  # Sunday (Israel work week start)
-        parts.append("WEEK KICKOFF: Focus on setting priorities for the week. Mention top 2-3 things to accomplish this week.")
+        parts.append("תחילת שבוע: התמקד בהגדרת עדיפויות לשבוע. ציין 2-3 דברים עיקריים להשבוע.")
     elif day_num == 4:  # Friday
-        parts.append("WEEK WRAP-UP: Focus on closing loops before weekend. Flag anything that can't wait until Sunday.")
+        parts.append("סוף שבוע עבודה: סגור קצוות לפני סופ\"ש. סמן דברים שלא יכולים לחכות ליום ראשון.")
     elif day_num == 5:  # Saturday
-        parts.append("WEEKEND: Keep it light. Only mention truly urgent items.")
+        parts.append("שבת: קח את זה קל. רק דברים באמת דחופים.")
 
     # Meeting density
     if timed_count >= 4:
-        parts.append(f"HEAVY MEETING DAY ({timed_count} meetings): Flag gaps for focused work and warn about back-to-back meetings.")
+        parts.append(f"יום פגישות צפוף ({timed_count} פגישות): סמן חלונות לעבודה מרוכזת והזהר מפגישות רצופות.")
     elif timed_count == 0:
-        parts.append("NO MEETINGS: Deep work opportunity. Suggest tackling the highest-priority task.")
+        parts.append("בלי פגישות: הזדמנות לעבודה עמוקה. תציע לטפל במשימה בעדיפות הגבוהה ביותר.")
 
     # Overdue tasks
     if overdue:
-        parts.append(f"OVERDUE ALERT: {len(overdue)} overdue task(s) — flag prominently: {', '.join(overdue[:3])}")
+        parts.append(f"התראת איחור: {len(overdue)} משימות באיחור — סמן בולט: {', '.join(overdue[:3])}")
 
     return " ".join(parts)
 
@@ -239,7 +239,7 @@ async def generate_morning_briefing(user_id: int) -> str:
 
     # Detect calendar conflicts
     conflicts = detect_conflicts(events) if events else []
-    conflicts_str = "\n".join(conflicts) if conflicts else "No conflicts."
+    conflicts_str = "\n".join(conflicts) if conflicts else "אין התנגשויות."
 
     # Compute day profile and structure analysis
     day_profile = _compute_day_profile(events if isinstance(events, list) else [], tasks if isinstance(tasks, list) else [])
@@ -249,7 +249,7 @@ async def generate_morning_briefing(user_id: int) -> str:
     email_lines = []
     for e in (emails or []):
         email_lines.append(f"• From: {e['from']} | Subject: {e['subject']}")
-    emails_str = "\n".join(email_lines) if email_lines else "No new emails."
+    emails_str = "\n".join(email_lines) if email_lines else "אין מיילים חדשים."
 
     # Generate synergy insights (uses already-fetched news + market)
     try:
@@ -292,32 +292,27 @@ async def generate_morning_briefing(user_id: int) -> str:
         context += f"\n\n🔄 Open Follow-ups:\n" + "\n".join(fu_lines)
 
     briefing_instructions = (
-        "\n\n=== Morning Briefing Instructions ===\n"
-        f"DAY CONTEXT: {day_profile}\n\n"
-        "Build a sharp morning briefing for Telegram. Make it SCANNABLE.\n\n"
-        "Sections (emoji header on its own line, then bullet points):\n"
-        "1. 📋 Today's Agenda\n"
-        "1b. 🗓 Day Plan (only if gaps/issues detected — suggest how to structure the day)\n"
-        "2. 🤖 AI Intel\n"
-        "3. 📊 Market\n"
-        "4. 💡 Synergy\n"
-        "5. ✅ Tasks\n"
-        "6. 🔄 Follow-ups (remind about open commitments from past conversations — only if any exist)\n\n"
-        "FORMATTING RULES (strict):\n"
-        "- Each section header is ONE line with emoji, then a blank line\n"
-        "- Use short bullet points (one line each), start each with a dot or arrow\n"
-        "- MAX 1-2 sentences per bullet. No long paragraphs. Ever.\n"
-        "- Numbers/tickers get their own line: 🟢 NVDA $190.50 (+0.8%)\n"
-        "- Blank line between sections for breathing room\n"
-        "- NO markdown (no **, no ##, no __)\n"
-        "- Talk like a sharp friend, not a news anchor\n"
-        "- Synergy insights are pre-analyzed. Present them as short bullets, don't re-analyze.\n"
-        "- If no data for a section, skip it entirely\n\n"
-        "GOOD example bullet:\n"
-        "  → xAI announced Mars AI timeline. NVDA jumped 0.8% on compute demand signal.\n\n"
-        "BAD example (too long):\n"
-        "  xAI just went full sci-fi with their Mars timeline — this isn't just Musk being Musk, "
-        "it's a signal that space-grade AI infrastructure is becoming investable...\n"
+        "\n\n=== הוראות בריפינג בוקר ===\n"
+        f"הקשר היום: {day_profile}\n\n"
+        "בנה בריפינג בוקר חד לטלגרם. שיהיה סריק ונקי.\n\n"
+        "סעיפים (אמוג'י ככותרת בשורה נפרדת, אחריו נקודות):\n"
+        "1. 📋 סדר יום\n"
+        "1b. 🗓 תוכנית יום (רק אם יש בעיות/פערים — תציע איך לבנות את היום)\n"
+        "2. 🤖 חדשות AI\n"
+        "3. 📊 שוק\n"
+        "4. 💡 סינרגיה\n"
+        "5. ✅ משימות\n"
+        "6. 🔄 המשכים (תזכיר התחייבויות פתוחות משיחות קודמות — רק אם יש)\n\n"
+        "כללי פורמט (קפדני):\n"
+        "- כל כותרת סעיף בשורה אחת עם אמוג'י, אחריה שורה ריקה\n"
+        "- נקודות קצרות (שורה אחת כל אחת), תתחיל כל אחת עם חץ או מקף\n"
+        "- מקסימום 1-2 משפטים לנקודה. בלי פסקאות ארוכות. אף פעם.\n"
+        "- מספרים/טיקרים בשורה נפרדת: 🟢 NVDA $190.50 (+0.8%)\n"
+        "- שורה ריקה בין סעיפים לנשימה\n"
+        "- בלי markdown (בלי **, בלי ##, בלי __)\n"
+        "- תדבר כמו חבר חד, לא כמו קריין חדשות\n"
+        "- תובנות סינרגיה כבר מנותחות. תציג כנקודות קצרות, בלי לנתח מחדש.\n"
+        "- אם אין מידע לסעיף, תדלג עליו לגמרי\n"
     )
     system_prompt = CHIEF_OF_STAFF_IDENTITY + briefing_instructions
 
@@ -334,22 +329,22 @@ async def generate_morning_briefing(user_id: int) -> str:
         return chat_completion.choices[0].message.content
     # Fallback: return raw formatted data
     return (
-        f"Morning Briefing\n\n"
-        f"📅 Calendar:\n{_format_events_context(events)}\n\n"
+        f"בריפינג בוקר\n\n"
+        f"📅 יומן:\n{_format_events_context(events)}\n\n"
         f"{''.join(c + chr(10) for c in conflicts)}"
-        f"📧 Emails:\n{emails_str}\n\n"
-        f"✅ Tasks:\n{_format_tasks_context(tasks)}"
+        f"📧 מיילים:\n{emails_str}\n\n"
+        f"✅ משימות:\n{_format_tasks_context(tasks)}"
     )
 
 
 MEETING_PREP_PROMPT = (
-    "Generate a quick meeting prep brief. Max 10 lines. Include:\n"
-    "- Who you're meeting (names/roles if inferable)\n"
-    "- Recent context from emails or notes\n"
-    "- Topics likely to come up\n"
-    "- 1-2 things to prepare or keep in mind\n\n"
-    "Format: clean bullets, no markdown. Start with the meeting title and time.\n"
-    "If there's no useful context beyond the meeting title, say so briefly — don't fabricate."
+    "צור תקציר הכנה לפגישה. מקסימום 10 שורות. כלול:\n"
+    "- עם מי הפגישה (שמות/תפקידים אם אפשר להסיק)\n"
+    "- הקשר אחרון ממיילים או הערות\n"
+    "- נושאים שצפויים לעלות\n"
+    "- 1-2 דברים להכין או לזכור\n\n"
+    "פורמט: נקודות נקיות, בלי markdown. תתחיל עם שם הפגישה והשעה.\n"
+    "אם אין הקשר מועיל מעבר לשם הפגישה, תגיד את זה בקצרה — אל תמציא."
 )
 
 
@@ -443,12 +438,11 @@ async def generate_meeting_prep(user_id: int) -> list[str]:
 
         if chat:
             prep_text = chat.choices[0].message.content
-            messages.append(f"📋 Meeting Prep\n\n{prep_text}")
+            messages.append(f"📋 הכנה לפגישה\n\n{prep_text}")
         else:
-            # Fallback: raw context
             messages.append(
-                f"📋 Meeting Prep: {event.get('summary', '?')} at {start_time}\n"
-                f"Attendees: {attendee_str}"
+                f"📋 הכנה לפגישה: {event.get('summary', '?')} ב-{start_time}\n"
+                f"משתתפים: {attendee_str}"
             )
 
         # Mark as prepped
