@@ -1,5 +1,6 @@
 """Centralised LLM wrapper — Gemini 2.5 Flash → Gemini 2.0 Flash → Groq (emergency)."""
 import asyncio
+import contextvars
 import logging
 import re
 from dataclasses import dataclass, field
@@ -11,6 +12,9 @@ from groq import AsyncGroq
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Tracks which model answered the last llm_call (per async task)
+last_model_used: contextvars.ContextVar[str] = contextvars.ContextVar("last_model_used", default="")
 
 # --- Clients ---
 _gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
@@ -159,18 +163,21 @@ async def llm_call(
     # 1. Try Gemini 2.5 Flash (primary)
     result = await _gemini_call(messages, timeout, temperature, response_format, settings.GEMINI_MODEL)
     if result:
+        last_model_used.set(settings.GEMINI_MODEL)
         return result
 
     # 2. Fallback to Gemini 2.0 Flash
     logger.info("Falling back to Gemini 2.0 Flash...")
     result = await _gemini_call(messages, timeout, temperature, response_format, settings.GEMINI_MODEL_FALLBACK)
     if result:
+        last_model_used.set(settings.GEMINI_MODEL_FALLBACK)
         return result
 
     # 3. Emergency fallback to Groq
     logger.info("Emergency fallback to Groq...")
     result = await _groq_call(messages, timeout, temperature, response_format)
     if result:
+        last_model_used.set(GROQ_MODEL)
         return result
 
     logger.error("All LLM providers failed")

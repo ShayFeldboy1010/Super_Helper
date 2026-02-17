@@ -195,7 +195,21 @@ async def _process_update(update_data: dict):
         from app.services.google_svc import GoogleService
         from app.services.archive_service import save_note
 
+        _MODEL_DISPLAY = {
+            "gemini-2.5-flash": "Gemini 2.5 Flash",
+            "gemini-2.0-flash": "Gemini 2.0 Flash",
+            "moonshotai/kimi-k2-instruct-0905": "Kimi K2",
+        }
+
         async def edit_status(new_text: str):
+            try:
+                from app.core.llm import last_model_used
+                model = last_model_used.get("")
+                if model:
+                    short = _MODEL_DISPLAY.get(model, model)
+                    new_text += f"\n\n({short})"
+            except Exception:
+                pass
             try:
                 await bot.edit_message_text(
                     text=new_text, chat_id=chat_id, message_id=status_msg_id
