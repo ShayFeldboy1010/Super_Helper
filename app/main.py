@@ -196,6 +196,7 @@ async def _process_update(update_data: dict):
         from app.services.archive_service import save_note
 
         _MODEL_DISPLAY = {
+            "gemini-3-flash-preview": "Gemini 3 Flash",
             "gemini-2.5-flash": "Gemini 2.5 Flash",
             "gemini-2.0-flash": "Gemini 2.0 Flash",
             "moonshotai/kimi-k2-instruct-0905": "Kimi K2",

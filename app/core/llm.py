@@ -1,4 +1,4 @@
-"""Centralised LLM wrapper — Gemini 2.5 Flash → Gemini 2.0 Flash → Groq (emergency)."""
+"""Centralised LLM wrapper — Gemini 3 Flash → Gemini 2.5 Flash → Groq (emergency)."""
 import asyncio
 import contextvars
 import logging
@@ -155,19 +155,19 @@ async def llm_call(
     response_format: dict | None = None,
     **kwargs,
 ) -> object | None:
-    """Call LLM: Gemini 2.5 Flash → Gemini 2.0 Flash → Groq (emergency) → None.
+    """Call LLM: Gemini 3 Flash → Gemini 2.5 Flash → Groq (emergency) → None.
 
     Returns a ChatCompletion-compatible object or None.
     Caller accesses .choices[0].message.content as before.
     """
-    # 1. Try Gemini 2.5 Flash (primary)
+    # 1. Try Gemini 3 Flash (primary)
     result = await _gemini_call(messages, timeout, temperature, response_format, settings.GEMINI_MODEL)
     if result:
         last_model_used.set(settings.GEMINI_MODEL)
         return result
 
-    # 2. Fallback to Gemini 2.0 Flash
-    logger.info("Falling back to Gemini 2.0 Flash...")
+    # 2. Fallback to Gemini 2.5 Flash
+    logger.info("Falling back to Gemini 2.5 Flash...")
     result = await _gemini_call(messages, timeout, temperature, response_format, settings.GEMINI_MODEL_FALLBACK)
     if result:
         last_model_used.set(settings.GEMINI_MODEL_FALLBACK)
