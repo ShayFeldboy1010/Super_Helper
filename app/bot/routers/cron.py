@@ -104,9 +104,15 @@ async def _check_email_alerts(user_id: int) -> int:
 
 
 async def _check_stock_alerts(user_id: int) -> int:
-    """Check for significant stock moves. Returns count of alerts sent."""
+    """Check for significant stock moves. Returns count of alerts sent. Max once per day."""
     try:
         from app.services.market_service import fetch_market_data
+        from app.core.cache import cache_get, cache_set
+
+        # Daily cooldown — only alert once per calendar day
+        today_str = datetime.now(TZ).strftime("%Y-%m-%d")
+        if cache_get(f"stock_alert:{today_str}"):
+            return 0
 
         threshold = getattr(settings, "STOCK_ALERT_THRESHOLD", 3.0)
         market = await fetch_market_data()
@@ -124,6 +130,7 @@ async def _check_stock_alerts(user_id: int) -> int:
 
         msg = "📊 התראת שוק — תזוזות גדולות היום:\n" + "\n".join(movers)
         await bot.send_message(chat_id=user_id, text=msg)
+        cache_set(f"stock_alert:{today_str}", True, 86400)  # Don't alert again today
         return len(movers)
 
     except Exception as e:

@@ -19,7 +19,7 @@ class GoogleService:
     async def authenticate(self) -> bool:
         """
         Retrieves the user's refresh token from Supabase, decrypts it,
-        and builds valid Google Credentials.
+        builds Google Credentials, and explicitly refreshes the access token.
         """
         try:
             # Fetch user from DB
@@ -34,9 +34,11 @@ class GoogleService:
                 return False
 
             refresh_token = decrypt_token(encrypted_token)
+            if not refresh_token:
+                logger.error(f"Failed to decrypt token for user {self.user_id} — SECRET_KEY may have changed. Re-auth needed.")
+                return False
 
             # Create Credentials object
-            # Note: access_token is None, it will refresh automatically
             self.creds = Credentials(
                 token=None,
                 refresh_token=refresh_token,
@@ -45,9 +47,13 @@ class GoogleService:
                 client_secret=settings.GOOGLE_CLIENT_SECRET,
                 scopes=SCOPES
             )
+
+            # Explicitly refresh to get a valid access token
+            from google.auth.transport.requests import Request
+            self.creds.refresh(Request())
             return True
         except Exception as e:
-            logger.error(f"Auth error for {self.user_id}: {e}")
+            logger.error(f"Auth error for {self.user_id}: {e} — user may need to re-authenticate at /auth/login")
             return False
 
     async def get_todays_events(self) -> List[str]:
