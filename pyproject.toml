@@ -1,0 +1,53 @@
+[project]
+name = "ai-super-man"
+version = "1.0.0"
+description = "AI-powered personal assistant Telegram bot with multi-LLM support"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Shay Feldboy"},
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "aiogram",
+    "supabase",
+    "python-dotenv",
+    "pydantic-settings",
+    "groq",
+    "openai",
+    "apscheduler",
+    "cryptography",
+    "google-auth",
+    "google-auth-oauthlib",
+    "google-api-python-client",
+    "feedparser",
+    "beautifulsoup4",
+    "httpx",
+    "google-genai",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "ruff",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"

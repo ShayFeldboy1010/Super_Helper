@@ -1,3 +1,5 @@
+"""LLM-powered intent classification -- routes natural language input to action handlers."""
+
 from app.core.llm import llm_call
 from app.core.database import supabase
 from app.models.router_models import RouterResponse
@@ -223,6 +225,7 @@ async def _get_recent_context(user_id: int) -> str:
 
 
 async def route_intent(text: str, user_id: int = None) -> RouterResponse:
+    """Classify user text into an action type (task/calendar/note/query/chat) via LLM."""
     try:
         now = datetime.now()
         current_time = now.strftime("%Y-%m-%d %H:%M:%S")

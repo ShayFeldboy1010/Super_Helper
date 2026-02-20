@@ -1,3 +1,5 @@
+"""Task CRUD operations against the Supabase `tasks` table."""
+
 from app.core.database import supabase
 from app.models.schemas import TaskCreate
 from datetime import datetime, timedelta, time
@@ -8,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 TZ = ZoneInfo("Asia/Jerusalem")
 
-async def create_task(user_id: int, task_data):
+async def create_task(user_id: int, task_data) -> dict | None:
+    """Parse task data and insert into Supabase. Handles date parsing and user upsert."""
     # task_data can be dict or Pydantic model - normalize it
     if hasattr(task_data, 'model_dump'):
         data = task_data.model_dump()
@@ -265,7 +268,7 @@ async def delete_task(user_id: int, title_query: str) -> dict | None:
         return None
 
 
-async def get_overdue_tasks(user_id: int):
+async def get_overdue_tasks(user_id: int) -> list[dict]:
     try:
         now_iso = datetime.now(TZ).isoformat()
         response = supabase.table("tasks").select("*").eq("user_id", user_id).eq("status", "pending").lt("due_at", now_iso).execute()
@@ -274,7 +277,7 @@ async def get_overdue_tasks(user_id: int):
         logger.error(f"Error fetching overdue tasks: {e}")
         return []
 
-async def get_pending_tasks(user_id: int, limit: int = 5):
+async def get_pending_tasks(user_id: int, limit: int = 5) -> list[dict]:
     try:
         response = supabase.table("tasks").select("*").eq("user_id", user_id).eq("status", "pending").order("priority", desc=True).limit(limit).execute()
         return response.data

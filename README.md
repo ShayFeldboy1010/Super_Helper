@@ -1,318 +1,283 @@
-# 🤖 Super Helper - AI Personal Assistant Bot
+# AI Super Man
 
-## 📋 תיאור הפרויקט
+> An AI-powered personal assistant that lives in Telegram — manages tasks, calendar, notes, email, market data, and more through natural language conversation.
 
-**Super Helper** הוא עוזר אישי חכם מבוסס AI שעובד דרך Telegram. הבוט מסוגל להבין שפה טבעית (עברית ואנגלית), לנהל משימות, ליצור אירועים ביומן Google, לשמור הערות, ולענות על שאלות על סמך המידע שלך.
-
-### ⭐ יכולות עיקריות
-- **🧠 Smart Router** - מסווג אוטומטית את ההודעות שלך (משימה / אירוע / הערה / שאלה)
-- **📅 Google Calendar** - יצירת אירועים ביומן וצפייה בלוח הזמנים
-- **✅ Task Management** - ניהול משימות עם תאריכי יעד ועדיפויות
-- **📝 Notes** - שמירת הערות עם תגיות
-- **💬 Query** - שאלות על המשימות, האירועים וההערות שלך
-- **⏰ Automated Reminders** - התראות על משימות שעבר זמנן
-- **☀️ Daily Briefing** - סיכום יומי של לוח הזמנים והמשימות
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Deployed on Render](https://img.shields.io/badge/Render-deployed-blueviolet)
 
 ---
 
-## 🏗️ ארכיטקטורת הפרויקט
+## Features
 
-```
-AI_Super_man/
-├── 📁 api/                          # Vercel Serverless Entry Point
-│   └── index.py                     # נקודת הכניסה ל-Vercel
-│
-├── 📁 app/                          # קוד האפליקציה הראשי
-│   ├── main.py                      # 🚀 FastAPI App + Webhook Handler
-│   │
-│   ├── 📁 bot/                      # לוגיקת הבוט
-│   │   ├── loader.py                # אתחול Bot + Dispatcher (aiogram)
-│   │   ├── middleware.py            # IDGuardMiddleware - הרשאות משתמש
-│   │   └── 📁 routers/              # הנתבים של הבוט
-│   │       ├── tasks.py             # 🎯 Handler ראשי - מעבד הודעות
-│   │       ├── auth.py              # 🔐 Google OAuth Flow
-│   │       ├── google_routes.py     # /login, /today commands
-│   │       └── cron.py              # ⏰ Cron Jobs (reminders, daily brief)
-│   │
-│   ├── 📁 core/                     # תשתית
-│   │   ├── config.py                # ⚙️ Settings (env vars)
-│   │   ├── database.py              # 🗄️ Supabase Client
-│   │   └── security.py              # 🔒 Token Encryption
-│   │
-│   ├── 📁 models/                   # מודלים
-│   │   ├── schemas.py               # Pydantic schemas (TaskCreate, etc.)
-│   │   └── router_models.py         # Router response models
-│   │
-│   └── 📁 services/                 # שירותים (Business Logic)
-│       ├── router_service.py        # 🧠 Smart Router - LLM Classification
-│       ├── llm_engine.py            # 🤖 LLM for Task Parsing
-│       ├── task_service.py          # ✅ CRUD for Tasks
-│       ├── google_svc.py            # 📅 Google Calendar API
-│       ├── archive_service.py       # 📝 Notes Storage
-│       └── query_service.py         # 💬 RAG-lite Query Handler
-│
-├── 📁 .github/workflows/            # GitHub Actions
-│   └── scheduler.yml                # ⏰ Cron Jobs (External Trigger)
-│
-├── .env                             # 🔑 Environment Variables (לא ב-Git)
-├── .gitignore                       # קבצים שלא נכנסים ל-Git
-├── requirements.txt                 # 📦 Python Dependencies
-└── vercel.json                      # ☁️ Vercel Configuration
-```
+**Natural Language Understanding**
+- LLM-powered intent classification into 5 action types (task, calendar, note, query, chat)
+- Hebrew and English input with confidence-based routing and ambiguity handling
+- Voice message transcription via Gemini
+
+**Task Management**
+- Create, complete, edit, delete tasks via natural language
+- Recurring tasks (daily/weekly/monthly) with auto-spawn
+- Smart duplicate detection using substring + word-overlap matching
+- Effort estimation and priority levels
+- Schedule tasks into free calendar slots automatically
+
+**Google Integration (OAuth 2.0)**
+- Calendar: create events, view schedule, detect conflicts, find free slots
+- Gmail: read recent emails, search by sender, unread count
+- Encrypted refresh token storage (Fernet/PBKDF2)
+
+**Knowledge & Memory**
+- Save notes with auto-tagging
+- URL content extraction + LLM summarization
+- Full-text search on saved notes (PostgreSQL `tsvector`)
+- Permanent insight system with daily reflection and confidence decay
+- Interaction logging for conversational continuity
+
+**Daily Intelligence**
+- Morning briefing: calendar + tasks + AI news + stock market + email digest + AI-market synergy analysis
+- Meeting prep: fetches attendee email history + related notes before meetings
+- Evening wrap-up and weekly review
+- Proactive alerts: overdue tasks, urgent emails, stock moves, weather
+
+**Data Sources**
+- Stock market data from Yahoo Finance with configurable watchlist
+- AI news aggregation from curated RSS feeds (TechCrunch, The Verge, MIT Tech Review)
+- Web search via Brave API with DuckDuckGo fallback
 
 ---
 
-## 🔗 חיבורים חיצוניים (External Services)
+## Architecture
 
-### 1. 🤖 Telegram Bot API
-- **מטרה:** ממשק המשתמש - קבלת ושליחת הודעות
-- **סוג חיבור:** Webhook
-- **URL:** `https://super-helper-theta.vercel.app/webhook`
-- **משתני סביבה:**
-  - `TELEGRAM_BOT_TOKEN` - Token של הבוט
-  - `TELEGRAM_USER_ID` - ID של המשתמש המורשה
-  - `M_WEBHOOK_SECRET` - סוד לאימות הבקשות
+```mermaid
+flowchart TB
+    User([Telegram User]) -->|message| TG[Telegram API]
+    TG -->|webhook POST| WH[FastAPI /webhook]
+    WH -->|BackgroundTask| Handler[Message Handler]
 
-### 2. 🗄️ Supabase (PostgreSQL)
-- **מטרה:** בסיס נתונים - שמירת משימות, הערות, ו-tokens
-- **טבלאות:**
-  - `users` - משתמשים ו-Google refresh tokens
-  - `tasks` - משימות (title, due_at, priority, status)
-  - `archive` - הערות ותגיות
-- **משתני סביבה:**
-  - `SUPABASE_URL`
-  - `SUPABASE_KEY`
+    Handler --> Voice{Voice?}
+    Voice -->|yes| Transcribe[Gemini Transcription]
+    Transcribe --> Router
+    Voice -->|no| Router
 
-### 3. 🧠 Groq API (LLM)
-- **מטרה:** הבנת שפה טבעית וסיווג הודעות
-- **מודל:** `moonshotai/kimi-k2-instruct-0905`
-- **משתני סביבה:**
-  - `GROQ_API_KEY`
+    Router[LLM Intent Router] -->|classify| Action{Action Type}
 
-### 4. 📅 Google Calendar API
-- **מטרה:** יצירת אירועים וקריאת לוח הזמנים
-- **OAuth Scopes:**
-  - `https://www.googleapis.com/auth/calendar`
-  - `https://www.googleapis.com/auth/gmail.readonly`
-- **משתני סביבה:**
-  - `GOOGLE_CLIENT_ID`
-  - `GOOGLE_CLIENT_SECRET`
-  - `GOOGLE_REDIRECT_URI`
+    Action -->|task| TaskSvc[Task Service]
+    Action -->|calendar| GoogleSvc[Google Calendar]
+    Action -->|note| ArchiveSvc[Archive Service]
+    Action -->|query| QuerySvc[Query Service]
+    Action -->|chat| LLM[LLM Direct]
 
-### 5. ☁️ Vercel (Hosting)
-- **מטרה:** אירוח האפליקציה כ-Serverless Functions
-- **URL:** `https://super-helper-theta.vercel.app`
-- **Auto Deploy:** מ-GitHub (main branch)
+    QuerySvc --> Parallel[Parallel Fetch]
+    Parallel --> Cal[Calendar API]
+    Parallel --> Gmail[Gmail API]
+    Parallel --> Market[Yahoo Finance]
+    Parallel --> News[RSS Feeds]
+    Parallel --> Search[Brave/DDG]
+    Parallel --> Archive[Archive FTS]
 
-### 6. 🔄 GitHub Actions
-- **מטרה:** הפעלת Cron Jobs (הגבלת Vercel Hobby)
-- **Jobs:**
-  - `check-reminders` - כל 30 דקות
-  - `daily-brief` - כל יום ב-6:00 בבוקר
-- **Secrets נדרשים:**
-  - `VERCEL_URL`
-  - `CRON_SECRET`
+    TaskSvc --> DB[(Supabase PostgreSQL)]
+    ArchiveSvc --> DB
+    GoogleSvc --> GCP[Google APIs]
 
----
+    subgraph LLM Fallback Chain
+        G3[Gemini 3 Flash] -->|fail| G25[Gemini 2.5 Flash]
+        G25 -->|fail| Groq[Groq Kimi K2]
+    end
 
-## 🔄 זרימת בקשה טיפוסית
+    Router --> G3
 
-```
-┌─────────────────┐
-│   Telegram      │ ──────► משתמש שולח: "תזכיר לי לקנות חלב מחר"
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Vercel/Webhook │ ──────► POST /webhook
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  IDGuard        │ ──────► בדיקת הרשאות (TELEGRAM_USER_ID)
-│  Middleware     │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Smart Router   │ ──────► LLM מסווג: action_type = "task"
-│  (Groq API)     │         payload = {title: "לקנות חלב", due_at: "מחר"}
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Task Handler   │ ──────► שומר ב-Supabase
-│  (tasks.py)     │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Telegram       │ ──────► "✅ משימה נוצרה: לקנות חלב"
-│  Response       │
-└─────────────────┘
+    Cron[GitHub Actions Cron] -->|HTTP| CronAPI[/api/cron/*]
+    CronAPI --> Reminders[Task Reminders]
+    CronAPI --> Brief[Morning Briefing]
+    CronAPI --> Reflect[Daily Reflection]
+    CronAPI --> MeetPrep[Meeting Prep]
 ```
 
 ---
 
-## ⚙️ משתני סביבה (.env)
+## Tech Stack
 
-```env
-# Telegram
-TELEGRAM_BOT_TOKEN=your_bot_token
-TELEGRAM_USER_ID=your_telegram_id
-
-# Supabase
-SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_KEY=your_anon_key
-
-# Groq (LLM)
-GROQ_API_KEY=gsk_xxx
-
-# Google OAuth
-GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=GOCSPX-xxx
-GOOGLE_REDIRECT_URI=https://super-helper-theta.vercel.app/auth/callback
-
-# Security
-M_WEBHOOK_SECRET=random_secret_string
-SECRET_KEY=another_random_string
-
-# Vercel
-WEBHOOK_URL=https://super-helper-theta.vercel.app/webhook
-```
+| Component | Technology |
+|-----------|-----------|
+| Bot Framework | [aiogram](https://docs.aiogram.dev/) (async Telegram framework) |
+| Backend | [FastAPI](https://fastapi.tiangolo.com/) + Uvicorn |
+| Database | [Supabase](https://supabase.com/) (PostgreSQL) |
+| Primary LLM | Google Gemini 3 Flash / 2.5 Flash |
+| Fallback LLM | Groq (Kimi K2) |
+| Google APIs | Calendar v3 + Gmail v1 (OAuth 2.0) |
+| Search | Brave Search API / DuckDuckGo fallback |
+| Market Data | Yahoo Finance Chart API |
+| News | RSS feeds via feedparser |
+| Deployment | [Render](https://render.com/) (free tier) |
+| Scheduling | GitHub Actions (cron triggers) |
+| Encryption | Fernet (PBKDF2-derived keys) |
 
 ---
 
-## 🚀 הפעלה מקומית
+## Getting Started
+
+### Prerequisites
+
+- Python 3.11+
+- A Telegram bot token (from [@BotFather](https://t.me/BotFather))
+- A [Supabase](https://supabase.com/) project
+- A [Google Cloud](https://console.cloud.google.com/) project with Calendar and Gmail APIs enabled
+- API keys for [Google AI Studio](https://aistudio.google.com/) (Gemini) and [Groq](https://console.groq.com/)
+
+### Installation
 
 ```bash
-# 1. התקנת תלויות
+git clone https://github.com/your-username/AI_Super_man.git
+cd AI_Super_man
+
 python -m venv venv
-source venv/bin/activate  # Mac/Linux
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
 pip install -r requirements.txt
+```
 
-# 2. הגדרת משתני סביבה
+### Configuration
+
+```bash
 cp .env.example .env
-# ערוך את .env עם הערכים שלך
+# Edit .env with your API keys and credentials
+```
 
-# 3. הפעלת השרת
+See [`.env.example`](.env.example) for all required and optional environment variables.
+
+### Database Setup
+
+Create the following tables in your Supabase project. The required schema:
+
+- `users` — Telegram user ID + encrypted Google refresh token
+- `tasks` — Task title, due date, priority, status, recurrence, effort
+- `archive` — Notes with tags and full-text search
+- `interaction_log` — Conversation history for memory and deduplication
+- `permanent_insights` — LLM-extracted user insights with confidence scores
+- `pending_confirmations` — Persisted confirmation flow state
+- `follow_ups` — Extracted commitments from conversations
+
+For full-text search on the archive, run:
+
+```sql
+ALTER TABLE archive ADD COLUMN IF NOT EXISTS fts tsvector
+    GENERATED ALWAYS AS (to_tsvector('simple', coalesce(content, ''))) STORED;
+CREATE INDEX IF NOT EXISTS idx_archive_fts ON archive USING GIN (fts);
+CREATE INDEX IF NOT EXISTS idx_archive_tags ON archive USING GIN (tags);
+```
+
+### Running Locally
+
+```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
 
-# 4. הפעלת Ngrok (בטרמינל נפרד)
+For local development with Telegram webhooks, use [ngrok](https://ngrok.com/):
+
+```bash
 ngrok http 8000
-# העתק את ה-URL ועדכן את הWebhook בטלגרם
+# Then call /setup-webhook with your ngrok URL
+```
+
+### Running Tests
+
+```bash
+pip install pytest pytest-asyncio
+pytest tests/ -v
 ```
 
 ---
 
-## 📦 תלויות (requirements.txt)
-
-| Package | תפקיד |
-|---------|-------|
-| `fastapi` | Web Framework |
-| `uvicorn` | ASGI Server |
-| `aiogram` | Telegram Bot Framework |
-| `supabase` | Database Client |
-| `groq` | LLM API Client |
-| `google-auth` | Google OAuth |
-| `google-api-python-client` | Google Calendar API |
-| `pydantic-settings` | Configuration Management |
-| `cryptography` | Token Encryption |
-
----
-
-## 🎯 פקודות Telegram זמינות
-
-| פקודה | תיאור |
-|-------|-------|
-| `/start` | התחלת שיחה |
-| `/login` | התחברות לחשבון Google |
-| `/today` | הצגת האירועים של היום |
-| `טקסט חופשי` | הבוט יבין אוטומטית מה לעשות |
-
----
-
-## 📝 דוגמאות לשימוש
+## Project Structure
 
 ```
->> "תזכיר לי להתקשר לרופא מחר ב-10"
-✅ משימה נוצרה: להתקשר לרופא (יעד: מחר 10:00)
-
->> "הוסף לי פגישה עם דני ביום חמישי ב-14:00"
-📅 אירוע נוצר: פגישה עם דני (יום חמישי 14:00)
-
->> "מה יש לי היום?"
-📅 לוח הזמנים שלך:
-• 10:00 - ישיבת צוות
-• 14:00 - פגישה עם לקוח
-✅ משימות פתוחות: 3
-
->> "תשמור לי את הרעיון: לפתח אפליקציה לניהול זמן"
-🧠 הערה נשמרה (תגיות: #רעיונות #פרויקטים)
+app/
+├── main.py                    # FastAPI entry point, webhook, health check
+├── core/
+│   ├── config.py              # Environment configuration (pydantic-settings)
+│   ├── database.py            # Supabase client
+│   ├── llm.py                 # LLM wrapper with 3-tier fallback chain
+│   ├── security.py            # Token encryption (Fernet/PBKDF2)
+│   ├── cache.py               # In-memory TTL cache
+│   └── prompts.py             # System prompts and bot identity
+├── bot/
+│   ├── loader.py              # Bot + Dispatcher initialization
+│   ├── handler.py             # Message processing pipeline
+│   ├── middleware.py           # User authorization (ID whitelist)
+│   └── routers/
+│       ├── tasks.py            # Telegram command handlers
+│       ├── auth.py             # Google OAuth flow
+│       ├── google_routes.py    # /login, /today commands
+│       └── cron.py             # Scheduled job endpoints
+├── models/
+│   ├── schemas.py              # Task Pydantic models
+│   └── router_models.py        # Intent classification models
+└── services/
+    ├── router_service.py       # LLM intent classifier
+    ├── task_service.py         # Task CRUD + matching + recurrence
+    ├── query_service.py        # Context-aware query answering
+    ├── google_svc.py           # Google Calendar + Gmail
+    ├── archive_service.py      # Notes + full-text search
+    ├── memory_service.py       # Interaction logging + insights
+    ├── briefing_service.py     # Morning briefing orchestrator
+    ├── heartbeat_service.py    # Proactive check-ins
+    ├── market_service.py       # Stock data (Yahoo Finance)
+    ├── news_service.py         # AI news (RSS feeds)
+    ├── search_service.py       # Web search (Brave/DDG)
+    ├── synergy_service.py      # AI-market insight synthesis
+    └── url_service.py          # URL extraction + summarization
 ```
 
 ---
 
-## 🔒 אבטחה
+## API Endpoints
 
-1. **Telegram User ID Whitelist** - רק המשתמש המורשה יכול להשתמש בבוט
-2. **Webhook Secret** - אימות שהבקשות מגיעות מטלגרם
-3. **Token Encryption** - ה-Google Refresh Tokens מוצפנים ב-DB
-4. **Environment Variables** - כל הסודות מחוץ לקוד
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/webhook` | Telegram webhook receiver |
+| `GET` | `/health` | Health check |
+| `GET` | `/setup-webhook` | One-time webhook registration |
+| `GET` | `/auth/login` | Initiate Google OAuth flow |
+| `GET` | `/auth/callback` | OAuth callback handler |
+| `GET` | `/api/cron/check-reminders` | Trigger task + email + stock + weather alerts |
+| `GET` | `/api/cron/daily-brief` | Send morning briefing |
+| `GET` | `/api/cron/daily-reflection` | Run insight extraction |
+| `GET` | `/api/cron/meeting-prep` | Send pre-meeting briefs |
+| `GET` | `/api/cron/heartbeat` | Proactive check-in / evening wrap-up |
+| `GET` | `/api/cron/weekly-review` | Weekly summary |
 
----
-
-## ☁️ Deployment (Vercel)
-
-הפרויקט מוגדר ל-Auto Deploy מ-GitHub:
-1. כל `git push` ל-`main` מפעיל Build חדש
-2. Vercel משתמש ב-`api/index.py` כנקודת כניסה
-3. Environment Variables צריכים להיות מוגדרים ב-Vercel Dashboard
-
----
-
-## 📊 מבנה בסיס הנתונים (Supabase)
-
-### טבלת `users`
-| Column | Type | Description |
-|--------|------|-------------|
-| telegram_id | BIGINT (PK) | מזהה Telegram |
-| google_refresh_token | TEXT | Token מוצפן |
-| timezone | TEXT | אזור זמן |
-| created_at | TIMESTAMP | תאריך יצירה |
-
-### טבלת `tasks`
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID (PK) | מזהה |
-| user_id | BIGINT | מזהה משתמש |
-| title | TEXT | כותרת המשימה |
-| due_at | TIMESTAMP | תאריך יעד |
-| priority | TEXT | low/medium/high |
-| status | TEXT | pending/done |
-| created_at | TIMESTAMP | תאריך יצירה |
-
-### טבלת `archive`
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID (PK) | מזהה |
-| user_id | BIGINT | מזהה משתמש |
-| content | TEXT | תוכן ההערה |
-| tags | TEXT[] | תגיות |
-| created_at | TIMESTAMP | תאריך יצירה |
+All `/api/cron/*` endpoints require `Authorization: Bearer <CRON_SECRET>` header.
 
 ---
 
-## 🛠️ פתרון בעיות נפוצות
+## Cron Jobs (GitHub Actions)
 
-| בעיה | פתרון |
-|------|-------|
-| הבוט לא מגיב | בדוק Vercel Logs / Webhook status |
-| "settings not defined" | וודא שכל הקבצים מייבאים `from app.core.config import settings` |
-| 403 Google Error | הפעל Calendar API ב-Google Cloud Console |
-| "No refresh token" | בטל הרשאות ב-myaccount.google.com והתחבר מחדש |
-| Flood Control | המתן כמה דקות והגדר webhook ידנית |
+| Workflow | Schedule | Endpoint |
+|----------|----------|----------|
+| `scheduler.yml` | Every 30 min | `/api/cron/check-reminders` |
+| `morning-brief.yml` | Daily 06:00 UTC | `/api/cron/daily-brief` |
+| `daily-reflection.yml` | Daily (evening) | `/api/cron/daily-reflection` |
+| `meeting-prep.yml` | Every 15 min | `/api/cron/meeting-prep` |
+| `heartbeat.yml` | Mid-week + evening | `/api/cron/heartbeat` |
 
 ---
 
-**Created by Shay Feldboy | 2026**
+## Key Design Decisions
+
+- **3-tier LLM fallback**: Gemini 3 Flash → Gemini 2.5 Flash → Groq. Each tier retries once before falling back. The wrapper normalizes all responses to a `ChatCompletion`-compatible interface.
+- **Parallel context fetching**: Query answering fetches calendar, tasks, emails, news, and market data simultaneously via `asyncio.gather`, keeping response times under 10 seconds.
+- **Webhook deduplication**: Each update is checked against `interaction_log.telegram_update_id` to prevent duplicate processing from Telegram retries.
+- **Persisted confirmation flow**: Destructive actions (delete, complete-all) require confirmation. State is stored in Supabase, surviving server restarts.
+- **Insight confidence decay**: Permanent insights lose 2% confidence per week if not reinforced, preventing stale data from polluting context.
+
+---
+
+## License
+
+[MIT](LICENSE)
+
+---
+
+Built by **Shay Feldboy**

@@ -1,3 +1,5 @@
+"""Stock market data fetching via Yahoo Finance with in-memory caching."""
+
 import asyncio
 import logging
 

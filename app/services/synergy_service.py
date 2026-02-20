@@ -1,3 +1,5 @@
+"""AI-market synergy analysis — connects AI developments with market movements."""
+
 import logging
 
 from app.core.llm import llm_call
@@ -28,6 +30,7 @@ Rules:
 
 
 def _format_news_for_synergy(news: list[dict]) -> str:
+    """Format news headlines for the synergy LLM prompt."""
     if not news:
         return "No AI news available today."
     lines = []
@@ -38,6 +41,7 @@ def _format_news_for_synergy(news: list[dict]) -> str:
 
 
 def _format_market_for_synergy(market: dict) -> str:
+    """Format market data for the synergy LLM prompt."""
     lines = []
     for idx in market.get("indices", []):
         direction = "up" if idx["change_pct"] >= 0 else "down"

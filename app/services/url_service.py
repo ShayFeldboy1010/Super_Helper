@@ -1,3 +1,5 @@
+"""URL content extraction, summarization, and auto-tagging."""
+
 import re
 import logging
 

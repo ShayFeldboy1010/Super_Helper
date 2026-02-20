@@ -1,3 +1,5 @@
+"""AI news aggregation from curated RSS feeds."""
+
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone

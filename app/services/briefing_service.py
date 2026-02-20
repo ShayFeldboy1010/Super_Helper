@@ -1,3 +1,5 @@
+"""Morning briefing orchestrator — aggregates calendar, tasks, news, market data, and emails."""
+
 import asyncio
 import logging
 from datetime import datetime, timedelta
@@ -41,6 +43,7 @@ def detect_conflicts(events: list[dict]) -> list[str]:
 
 
 def _format_events_context(events: list[dict]) -> str:
+    """Format calendar events as bullet points."""
     if not events:
         return "אין אירועים היום."
     lines = []
@@ -58,6 +61,7 @@ def _format_events_context(events: list[dict]) -> str:
 
 
 def _format_news_context(news: list[dict]) -> str:
+    """Format news items as bullet points."""
     if not news:
         return "אין חדשות AI חדשות."
     lines = [f"• {n['title']} ({n['source']})" for n in news[:5]]
@@ -65,6 +69,7 @@ def _format_news_context(news: list[dict]) -> str:
 
 
 def _format_market_context(market: dict) -> str:
+    """Format market data with directional indicators."""
     lines = []
     for idx in market.get("indices", []):
         arrow = "🟢" if idx["change_pct"] >= 0 else "🔴"
@@ -76,6 +81,7 @@ def _format_market_context(market: dict) -> str:
 
 
 def _format_tasks_context(tasks: list[dict]) -> str:
+    """Format pending tasks as bullet points."""
     if not tasks:
         return "אין משימות פתוחות."
     lines = []

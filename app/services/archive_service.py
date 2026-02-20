@@ -1,10 +1,13 @@
+"""Note storage and full-text search on the Supabase `archive` table."""
+
 from app.core.database import supabase
 import logging
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
-async def save_note(user_id: int, content: str, tags: Optional[List[str]] = None):
+async def save_note(user_id: int, content: str, tags: Optional[List[str]] = None) -> dict | None:
+    """Save a note with optional tags to the archive."""
     try:
         payload = {
             "user_id": user_id,
@@ -106,7 +109,7 @@ async def save_url_knowledge(
     summary: str,
     tags: List[str],
     key_points: List[str],
-) -> Optional[dict]:
+) -> dict | None:
     """Save URL content as a knowledge entry in the archive."""
     try:
         full_content = f"{title}\n\n{summary}"

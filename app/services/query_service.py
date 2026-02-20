@@ -1,3 +1,5 @@
+"""Context-aware query answering -- fetches relevant data sources in parallel and synthesizes via LLM."""
+
 import asyncio
 import logging
 import json
@@ -43,6 +45,7 @@ class QueryService:
             return ""
 
     async def answer_query(self, query_text: str, context_needed: list[str], target_date: str = None, memory_context: str = "", archive_since: str = None) -> str:
+        """Fetch context from requested sources in parallel and answer the query via LLM."""
         # --- Parallel context fetching ---
         async def _fetch_calendar():
             events = await self.google.get_events_for_date(target_date)

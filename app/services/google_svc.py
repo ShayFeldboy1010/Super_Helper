@@ -1,3 +1,5 @@
+"""Google Calendar and Gmail integration via OAuth 2.0."""
+
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any

@@ -1,3 +1,5 @@
+"""Interaction logging, daily reflection, and permanent insight management."""
+
 import logging
 import json
 from datetime import datetime

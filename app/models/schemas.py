@@ -1,3 +1,5 @@
+"""Pydantic schemas for task creation and database representation."""
+
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from datetime import datetime
@@ -18,5 +20,4 @@ class TaskDB(BaseModel):
     priority: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
