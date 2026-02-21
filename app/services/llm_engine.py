@@ -1,9 +1,11 @@
-from groq import AsyncGroq
-from app.core.config import settings
-from app.models.schemas import TaskCreate
 import json
 import logging
 from datetime import datetime
+
+from groq import AsyncGroq
+
+from app.core.config import settings
+from app.models.schemas import TaskCreate
 
 logger = logging.getLogger(__name__)
 

@@ -1,17 +1,16 @@
 """Proactive heartbeat messages — the bot reaches out, not just responds."""
 import asyncio
 import logging
-from datetime import timedelta
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from app.core.database import supabase
 from app.core.llm import llm_call
 from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
-from app.core.database import supabase
-from app.services.task_service import get_pending_tasks, get_overdue_tasks
 from app.services.google_svc import GoogleService
-from app.services.memory_service import get_relevant_insights, get_pending_follow_ups
 from app.services.market_service import fetch_market_data
+from app.services.memory_service import get_pending_follow_ups, get_relevant_insights
+from app.services.task_service import get_overdue_tasks, get_pending_tasks
 
 logger = logging.getLogger(__name__)
 TZ = ZoneInfo("Asia/Jerusalem")
@@ -203,11 +202,11 @@ async def generate_evening_wrapup(user_id: int) -> str | None:
         if movers_str:
             prompt += f"Notable market moves today:\n{movers_str}\n\n"
         prompt += (
-            f"Write a short evening message — recap + preview of tomorrow.\n"
-            f"If there's something critical tomorrow, highlight it.\n"
-            f"If there are open follow-ups, mention the most important one.\n"
-            f"If there were notable market moves, include a quick note.\n"
-            f"Tone: calm, direct, like a friend syncing at end of day."
+            "Write a short evening message — recap + preview of tomorrow.\n"
+            "If there's something critical tomorrow, highlight it.\n"
+            "If there are open follow-ups, mention the most important one.\n"
+            "If there were notable market moves, include a quick note.\n"
+            "Tone: calm, direct, like a friend syncing at end of day."
         )
 
         chat = await llm_call(

@@ -1,7 +1,9 @@
 """iGPT Email Intelligence API wrapper — semantic email search and Q&A."""
 
 import logging
+
 import httpx
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)

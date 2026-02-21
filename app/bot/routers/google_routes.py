@@ -1,8 +1,9 @@
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
-from app.services.google_svc import GoogleService
+
 from app.core.config import settings
+from app.services.google_svc import GoogleService
 
 router = Router()
 

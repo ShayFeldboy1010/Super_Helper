@@ -1,10 +1,13 @@
 """Token encryption/decryption using Fernet symmetric encryption."""
 
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
-from app.core.config import settings
 import base64
+
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+from app.core.config import settings
+
 
 def get_fernet() -> Fernet:
     """Build a Fernet instance from SECRET_KEY, deriving if needed."""

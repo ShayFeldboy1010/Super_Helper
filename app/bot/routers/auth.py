@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import RedirectResponse
+import logging
+
 import httpx
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import RedirectResponse
+
 from app.core.config import settings
 from app.core.database import supabase
 from app.core.security import encrypt_token
-import logging
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)

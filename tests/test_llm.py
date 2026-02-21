@@ -1,7 +1,6 @@
 """Tests for the LLM wrapper — fallback chain and response formatting."""
 
-import pytest
-from app.core.llm import _strip_markdown, _convert_messages, _CompatResponse, _Choice, _Message
+from app.core.llm import _Choice, _CompatResponse, _convert_messages, _Message, _strip_markdown
 
 
 class TestStripMarkdown:

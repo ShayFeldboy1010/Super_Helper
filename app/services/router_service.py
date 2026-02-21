@@ -1,11 +1,12 @@
 """LLM-powered intent classification -- routes natural language input to action handlers."""
 
-from app.core.llm import llm_call
-from app.core.database import supabase
-from app.models.router_models import RouterResponse
 import json
 import logging
 from datetime import datetime
+
+from app.core.database import supabase
+from app.core.llm import llm_call
+from app.models.router_models import RouterResponse
 
 logger = logging.getLogger(__name__)
 

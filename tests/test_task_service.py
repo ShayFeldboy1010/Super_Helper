@@ -1,9 +1,10 @@
 """Tests for the task service — CRUD operations, matching, and recurring tasks."""
 
-import pytest
-from unittest.mock import patch, MagicMock
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
+
+import pytest
 
 from app.services.task_service import (
     _match_task,

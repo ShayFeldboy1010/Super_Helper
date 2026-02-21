@@ -89,9 +89,10 @@ def cancel_confirmation(user_id: int) -> None:
 async def transcribe_voice(file_id: str) -> str | None:
     """Download a Telegram voice message and transcribe it via Gemini."""
     try:
+        import io
+
         from google import genai
         from google.genai import types as genai_types
-        import io
 
         file_info = await bot.get_file(file_id)
         file_bytes = io.BytesIO()
@@ -150,11 +151,13 @@ async def _handle_confirmation(
     edit_status,
 ) -> bool:
     """Handle yes/no confirmation replies. Returns True if handled."""
-    from app.services.task_service import (
-        create_task, complete_all_tasks, delete_task,
-    )
     from app.services.google_svc import GoogleService
     from app.services.memory_service import log_interaction
+    from app.services.task_service import (
+        complete_all_tasks,
+        create_task,
+        delete_task,
+    )
 
     text_lower = text.strip().lower()
     if text_lower not in ("כן", "yes", "confirm", "אישור"):
@@ -219,9 +222,9 @@ async def _handle_url(
     edit_status,
 ) -> None:
     """Extract, fetch, summarize and save URL content."""
-    from app.services.url_service import fetch_url_content, summarize_and_tag
     from app.services.archive_service import save_url_knowledge
     from app.services.memory_service import log_interaction
+    from app.services.url_service import fetch_url_content, summarize_and_tag
 
     url = urls[0]
     try:
@@ -259,14 +262,9 @@ async def _dispatch_intent(
     edit_status,
 ) -> None:
     """Route the classified intent to the appropriate service handler."""
-    from app.services.task_service import (
-        create_task, complete_task, delete_task, complete_all_tasks,
-        get_pending_tasks, edit_task, _match_task,
-    )
-    from app.services.google_svc import GoogleService
     from app.services.archive_service import save_note
-    from app.services.query_service import QueryService
     from app.services.memory_service import log_interaction
+    from app.services.query_service import QueryService
 
     action_type = intent.classification.action_type
     bot_response = None
@@ -353,11 +351,14 @@ async def _dispatch_intent(
 
 async def _handle_task_action(text: str, intent, user_id: int, edit_status) -> str | None:
     """Process task-related actions (create, complete, delete, edit, schedule)."""
-    from app.services.task_service import (
-        create_task, complete_task, delete_task, complete_all_tasks,
-        get_pending_tasks, edit_task, _match_task,
-    )
     from app.services.google_svc import GoogleService
+    from app.services.task_service import (
+        _match_task,
+        complete_task,
+        create_task,
+        edit_task,
+        get_pending_tasks,
+    )
 
     action = getattr(intent.task, "action", "create")
 
@@ -600,8 +601,8 @@ async def process_update(update_data: dict) -> None:
 
         # --- Core processing with 55s timeout ---
         async def _process_core() -> None:
-            from app.services.router_service import route_intent
             from app.services.memory_service import get_relevant_insights
+            from app.services.router_service import route_intent
             from app.services.url_service import extract_urls
 
             await bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -627,7 +628,7 @@ async def process_update(update_data: dict) -> None:
 
             if isinstance(intent_result, Exception):
                 logger.error(f"Intent routing failed: {intent_result}")
-                from app.models.router_models import RouterResponse, ActionClassification, QueryPayload
+                from app.models.router_models import ActionClassification, QueryPayload, RouterResponse
                 intent_result = RouterResponse(
                     classification=ActionClassification(action_type="query", confidence=0.5, summary="Fallback"),
                     query=QueryPayload(query=text, context_needed=[]),

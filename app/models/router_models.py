@@ -1,7 +1,9 @@
 """Pydantic models for the LLM intent classification router."""
 
+from typing import Literal, Optional
+
 from pydantic import BaseModel, Field
-from typing import Optional, Literal
+
 
 class ActionClassification(BaseModel):
     action_type: Literal["task", "calendar", "note", "query", "chat"] = Field(..., description="The type of action to perform.")

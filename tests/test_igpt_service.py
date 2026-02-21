@@ -1,8 +1,9 @@
 """Tests for iGPT email intelligence service + fallback behavior."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
+
 import httpx
+import pytest
 
 from app.services import igpt_service as igpt
 

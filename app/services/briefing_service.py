@@ -2,19 +2,19 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from app.core.config import settings
 from app.core.llm import llm_call
 from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
-from app.services.google_svc import GoogleService
-from app.services.task_service import get_pending_tasks
-from app.services.news_service import fetch_ai_news
-from app.services.market_service import fetch_market_data
-from app.services.synergy_service import generate_synergy_insights
-from app.services.memory_service import get_relevant_insights, get_pending_follow_ups
 from app.services import igpt_service as igpt
-from app.core.config import settings
+from app.services.google_svc import GoogleService
+from app.services.market_service import fetch_market_data
+from app.services.memory_service import get_pending_follow_ups, get_relevant_insights
+from app.services.news_service import fetch_ai_news
+from app.services.synergy_service import generate_synergy_insights
+from app.services.task_service import get_pending_tasks
 
 logger = logging.getLogger(__name__)
 TZ = ZoneInfo("Asia/Jerusalem")
@@ -305,7 +305,7 @@ async def generate_morning_briefing(user_id: int) -> str:
         for fu in follow_ups:
             due = f" (due: {fu['due_at'][:10]})" if fu.get("due_at") else ""
             fu_lines.append(f"• {fu['commitment']}{due}")
-        context += f"\n\n🔄 Open Follow-ups:\n" + "\n".join(fu_lines)
+        context += "\n\n🔄 Open Follow-ups:\n" + "\n".join(fu_lines)
 
     briefing_instructions = (
         "\n\n=== הוראות בריפינג בוקר ===\n"
@@ -437,9 +437,9 @@ async def generate_meeting_prep(user_id: int) -> list[str]:
         if event.get("description"):
             context += f"Description: {event['description'][:200]}\n"
         if email_context_lines:
-            context += f"\nRecent emails with attendees:\n" + "\n".join(email_context_lines[:6])
+            context += "\nRecent emails with attendees:\n" + "\n".join(email_context_lines[:6])
         if archive_lines:
-            context += f"\nRelevant notes:\n" + "\n".join(archive_lines)
+            context += "\nRelevant notes:\n" + "\n".join(archive_lines)
 
         # LLM call
         chat = await llm_call(

@@ -1,12 +1,17 @@
-from aiogram import Router, F, types
-from aiogram.filters import Command
-from app.services.router_service import route_intent
-from app.services.task_service import create_task, complete_task, delete_task
-from app.services.memory_service import log_interaction, get_relevant_insights
-from app.services.url_service import extract_urls, fetch_url_content, summarize_and_tag
-from app.services.archive_service import save_url_knowledge
-from app.core.config import settings
 import logging
+from datetime import datetime
+
+from aiogram import F, Router, types
+from aiogram.filters import Command
+
+from app.core.config import settings
+from app.services.archive_service import save_note, save_url_knowledge
+from app.services.google_svc import GoogleService
+from app.services.memory_service import get_relevant_insights, log_interaction
+from app.services.query_service import QueryService
+from app.services.router_service import route_intent
+from app.services.task_service import complete_task, create_task, delete_task
+from app.services.url_service import extract_urls, fetch_url_content, summarize_and_tag
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -164,10 +169,6 @@ async def handle_task(message: types.Message, intent, status_msg) -> str | None:
             return text
 
 
-from app.services.google_svc import GoogleService
-from datetime import datetime
-
-
 async def handle_calendar(message: types.Message, intent, status_msg) -> str | None:
     user_id = message.from_user.id
     google = GoogleService(user_id)
@@ -187,7 +188,7 @@ async def handle_calendar(message: types.Message, intent, status_msg) -> str | N
         logger.warning(f"Date parse failed for {event_data.start_time}, trying flexible")
         try:
              start_dt = datetime.fromisoformat(event_data.start_time)
-        except:
+        except (ValueError, TypeError):
              text = f"Couldn't parse the date: {event_data.start_time}"
              await safe_edit(status_msg, text)
              return text
@@ -209,9 +210,6 @@ async def handle_calendar(message: types.Message, intent, status_msg) -> str | N
         return text
 
 
-from app.services.archive_service import save_note
-
-
 async def handle_note(message: types.Message, intent, status_msg) -> str | None:
     user_id = message.from_user.id
     note_data = intent.note
@@ -227,9 +225,6 @@ async def handle_note(message: types.Message, intent, status_msg) -> str | None:
         text = "Failed to save note."
         await safe_edit(status_msg, text)
         return text
-
-
-from app.services.query_service import QueryService
 
 
 async def handle_query(message: types.Message, intent, status_msg, memory_context: str = "") -> str | None:
@@ -261,7 +256,7 @@ async def handle_url_save(message: types.Message, urls: list[str], status_msg) -
 
         result = await summarize_and_tag(url, fetched["title"], fetched["content"])
 
-        saved = await save_url_knowledge(
+        await save_url_knowledge(
             user_id=message.from_user.id,
             url=url,
             title=fetched["title"],

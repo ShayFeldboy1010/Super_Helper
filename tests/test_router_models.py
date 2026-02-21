@@ -1,16 +1,16 @@
 """Tests for the Pydantic router models — validates intent classification schemas."""
 
 import json
+
 import pytest
 from pydantic import ValidationError
 
 from app.models.router_models import (
     ActionClassification,
-    TaskPayload,
     CalendarPayload,
-    NotePayload,
     QueryPayload,
     RouterResponse,
+    TaskPayload,
 )
 
 

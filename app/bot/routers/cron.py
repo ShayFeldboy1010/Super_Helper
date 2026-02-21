@@ -3,11 +3,12 @@ import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Header, HTTPException, Depends
-from app.core.config import settings
-from app.services.task_service import get_overdue_tasks
-from app.services.memory_service import run_daily_reflection, extract_follow_ups, get_pending_follow_ups
+from fastapi import APIRouter, Depends, Header, HTTPException
+
 from app.bot.loader import bot
+from app.core.config import settings
+from app.services.memory_service import extract_follow_ups, get_pending_follow_ups, run_daily_reflection
+from app.services.task_service import get_overdue_tasks
 
 router = APIRouter(prefix="/api/cron", tags=["cron"])
 logger = logging.getLogger(__name__)
@@ -133,8 +134,8 @@ async def _check_email_alerts_gmail(user_id: int) -> int:
 async def _check_stock_alerts(user_id: int) -> int:
     """Check for significant stock moves. Returns count of alerts sent. Max once per day."""
     try:
-        from app.services.market_service import fetch_market_data
         from app.core.cache import cache_get, cache_set
+        from app.services.market_service import fetch_market_data
 
         # Daily cooldown — only alert once per calendar day
         today_str = datetime.now(TZ).strftime("%Y-%m-%d")
@@ -169,6 +170,7 @@ async def _check_weather_alert(user_id: int) -> int:
     """Check for rain forecast. Returns 1 if alert sent, 0 otherwise."""
     try:
         import httpx
+
         from app.core.cache import cache_get, cache_set
 
         today_str = datetime.now(TZ).strftime("%Y-%m-%d")
@@ -392,7 +394,7 @@ async def heartbeat():
     user_id = settings.TELEGRAM_USER_ID
 
     try:
-        from app.services.heartbeat_service import generate_goal_checkin, generate_evening_wrapup
+        from app.services.heartbeat_service import generate_evening_wrapup, generate_goal_checkin
 
         now = datetime.now(TZ)
         hour = now.hour

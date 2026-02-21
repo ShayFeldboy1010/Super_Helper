@@ -1,6 +1,7 @@
 """Telegram bot and dispatcher initialization."""
 
 from aiogram import Bot, Dispatcher
+
 from app.core.config import settings
 
 # Initialize Bot and Dispatcher

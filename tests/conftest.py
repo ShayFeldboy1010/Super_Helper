@@ -1,9 +1,10 @@
 """Shared test fixtures — mocks for external services (LLM, Supabase, Google)."""
 
 import os
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 from dataclasses import dataclass, field
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 # Set required env vars before any app imports
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test:token")

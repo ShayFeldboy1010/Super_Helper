@@ -1,8 +1,9 @@
 """Note storage and full-text search on the Supabase `archive` table."""
 
-from app.core.database import supabase
 import logging
 from typing import List, Optional
+
+from app.core.database import supabase
 
 logger = logging.getLogger(__name__)
 

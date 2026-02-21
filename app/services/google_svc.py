@@ -2,9 +2,11 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+
 from app.core.config import settings
 from app.core.database import supabase
 from app.core.security import decrypt_token

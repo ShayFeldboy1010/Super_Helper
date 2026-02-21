@@ -1,6 +1,6 @@
 """Tests for market data utilities — ticker extraction and name mapping."""
 
-from app.services.market_service import extract_tickers_from_query, COMPANY_TO_TICKER
+from app.services.market_service import COMPANY_TO_TICKER, extract_tickers_from_query
 
 
 class TestExtractTickers:

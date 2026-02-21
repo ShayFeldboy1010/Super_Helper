@@ -1,10 +1,11 @@
 """Telegram user authorization middleware."""
 
 import logging
-from typing import Callable, Dict, Any, Awaitable
+from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject, Message
+from aiogram.types import TelegramObject
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)

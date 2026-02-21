@@ -1,7 +1,8 @@
 """Tests for the in-memory TTL cache."""
 
 import time
-from app.core.cache import cache_get, cache_set, _store
+
+from app.core.cache import _store, cache_get, cache_set
 
 
 class TestCache:

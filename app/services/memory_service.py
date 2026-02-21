@@ -1,9 +1,10 @@
 """Interaction logging, daily reflection, and permanent insight management."""
 
-import logging
 import json
+import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
 from app.core.database import supabase
 from app.core.llm import llm_call
 

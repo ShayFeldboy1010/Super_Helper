@@ -15,7 +15,7 @@ from starlette.responses import JSONResponse
 from app.bot.handler import process_update
 from app.bot.loader import bot, dp
 from app.bot.middleware import IDGuardMiddleware
-from app.bot.routers import tasks, auth, google_routes, cron
+from app.bot.routers import auth, cron, google_routes, tasks
 from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO)

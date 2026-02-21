@@ -2,18 +2,18 @@
 
 import asyncio
 import logging
-import json
-from app.core.database import supabase
-from app.services.google_svc import GoogleService
-from app.services.search_service import web_search, format_search_results
-from app.services.news_service import fetch_ai_news
-from app.services.market_service import fetch_market_data, fetch_symbols, extract_tickers_from_query
-from app.services.synergy_service import generate_synergy_insights
-from app.services.memory_service import get_relevant_insights
-from app.services import igpt_service as igpt
+
 from app.core.config import settings
+from app.core.database import supabase
 from app.core.llm import llm_call
 from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
+from app.services import igpt_service as igpt
+from app.services.google_svc import GoogleService
+from app.services.market_service import extract_tickers_from_query, fetch_market_data, fetch_symbols
+from app.services.memory_service import get_relevant_insights
+from app.services.news_service import fetch_ai_news
+from app.services.search_service import format_search_results, web_search
+from app.services.synergy_service import generate_synergy_insights
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +63,11 @@ class QueryService:
             return "✅ No open tasks."
 
         async def _fetch_archive():
-            from app.services.archive_service import search_archive
-            from datetime import datetime as _dt, timedelta as _td
+            from datetime import datetime as _dt
+            from datetime import timedelta as _td
             from zoneinfo import ZoneInfo as _ZI
+
+            from app.services.archive_service import search_archive
             # Compute since date from archive_since
             since_date = None
             if archive_since:
@@ -94,7 +96,7 @@ class QueryService:
             emails = await self.google.get_recent_emails(max_results=5)
             if emails:
                 email_lines = [f"- From: {e['from']} | Subject: {e['subject']}\n  {e['snippet'][:100]}" for e in emails]
-                return f"📧 Recent emails:\n" + "\n".join(email_lines)
+                return "📧 Recent emails:\n" + "\n".join(email_lines)
             return "📧 No recent emails."
 
         async def _fetch_web():
@@ -110,7 +112,7 @@ class QueryService:
                 for n in news_items:
                     summary = f"\n  {n['summary'][:120]}" if n.get("summary") else ""
                     lines.append(f"- {n['title']} ({n['source']}){summary}")
-                return f"🤖 AI News (live):\n" + "\n".join(lines)
+                return "🤖 AI News (live):\n" + "\n".join(lines)
             return "🤖 No recent AI news found."
 
         async def _fetch_market():
@@ -134,7 +136,7 @@ class QueryService:
                 arrow = "🟢" if t["change_pct"] >= 0 else "🔴"
                 lines.append(f"{arrow} {t['name']}: ${t['price']:,.2f} ({t['change_pct']:+.1f}%)")
             if lines:
-                return f"📊 Market Data (live):\n" + "\n".join(lines)
+                return "📊 Market Data (live):\n" + "\n".join(lines)
             return "📊 No market data available."
 
         async def _fetch_synergy():
