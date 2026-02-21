@@ -36,7 +36,7 @@ async def ask(query: str) -> str | None:
             )
             resp.raise_for_status()
             data = resp.json()
-            return data.get("answer") or data.get("response") or str(data)
+            return data.get("output") or data.get("answer") or data.get("response") or None
     except httpx.TimeoutException:
         logger.warning("iGPT ask timed out for query: %s", query[:80])
         return None

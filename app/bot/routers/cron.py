@@ -69,7 +69,17 @@ async def _check_email_alerts_igpt(user_id: int) -> int:
         "that need immediate attention? List each with sender, subject, and why it's "
         "urgent. If nothing is urgent, say 'No urgent emails.'"
     )
-    if not answer or "no urgent" in answer.lower():
+    if not answer:
+        return 0
+
+    # Skip non-actionable responses (no access, nothing urgent, etc.)
+    lower = answer.lower()
+    skip_phrases = [
+        "no urgent", "no new", "nothing urgent", "no time-sensitive",
+        "don't have access", "i can't access", "i cannot access",
+        "no emails", "not have access",
+    ]
+    if any(phrase in lower for phrase in skip_phrases):
         return 0
 
     msg = f"📧 Email Alert (iGPT)\n\n{answer}"

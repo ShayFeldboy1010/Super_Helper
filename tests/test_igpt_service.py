@@ -22,8 +22,9 @@ def _make_response(json_data: dict) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_ask_returns_answer():
-    mock_resp = _make_response({"answer": "You have 3 unread emails from John."})
+async def test_ask_returns_output_field():
+    """iGPT returns the answer in the 'output' field."""
+    mock_resp = _make_response({"output": "You have 3 unread emails from John."})
 
     with patch.object(igpt, "settings") as mock_settings:
         mock_settings.igpt_enabled = True
@@ -140,6 +141,22 @@ async def test_search_timeout_returns_empty():
 # ---------------------------------------------------------------------------
 # ask() response field fallback
 # ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_ask_unknown_fields_returns_none():
+    """If API returns unrecognized fields only, return None instead of raw JSON."""
+    mock_resp = _make_response({"id": "abc", "context": {}, "usage": {}})
+
+    with patch.object(igpt, "settings") as mock_settings:
+        mock_settings.igpt_enabled = True
+        mock_settings.IGPT_API_KEY = "test-key"
+        mock_settings.IGPT_API_USER = "user@test.com"
+
+        with patch("httpx.AsyncClient.post", return_value=mock_resp):
+            result = await igpt.ask("test")
+
+    assert result is None
+
 
 @pytest.mark.asyncio
 async def test_ask_falls_back_to_response_field():
