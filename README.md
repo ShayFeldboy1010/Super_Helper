@@ -88,7 +88,7 @@ flowchart TB
 
     Router --> G3
 
-    Cron[GitHub Actions Cron] -->|HTTP| CronAPI[/api/cron/*]
+    Cron[GitHub Actions Cron] -->|HTTP| CronAPI["api/cron/*"]
     CronAPI --> Reminders[Task Reminders]
     CronAPI --> Brief[Morning Briefing]
     CronAPI --> Reflect[Daily Reflection]
