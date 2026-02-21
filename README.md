@@ -26,6 +26,7 @@
 **Google Integration (OAuth 2.0)**
 - Calendar: create events, view schedule, detect conflicts, find free slots
 - Gmail: read recent emails, search by sender, unread count
+- [iGPT](https://igpt.ai/) email intelligence: semantic email Q&A with cited sources (optional, falls back to Gmail)
 - Encrypted refresh token storage (Fernet/PBKDF2)
 
 **Knowledge & Memory**
@@ -71,7 +72,9 @@ flowchart TB
 
     QuerySvc --> Parallel[Parallel Fetch]
     Parallel --> Cal[Calendar API]
-    Parallel --> Gmail[Gmail API]
+    Parallel --> EmailSwitch{iGPT enabled?}
+    EmailSwitch -->|yes| iGPT[iGPT Email Intelligence]
+    EmailSwitch -->|no| Gmail[Gmail API]
     Parallel --> Market[Yahoo Finance]
     Parallel --> News[RSS Feeds]
     Parallel --> Search[Brave/DDG]
@@ -80,6 +83,7 @@ flowchart TB
     TaskSvc --> DB[(Supabase PostgreSQL)]
     ArchiveSvc --> DB
     GoogleSvc --> GCP[Google APIs]
+    iGPT --> iGPTAPI[iGPT Recall API]
 
     subgraph LLM Fallback Chain
         G3[Gemini 3 Flash] -->|fail| G25[Gemini 2.5 Flash]
@@ -107,6 +111,7 @@ flowchart TB
 | Primary LLM | Google Gemini 3 Flash / 2.5 Flash |
 | Fallback LLM | Groq (Kimi K2) |
 | Google APIs | Calendar v3 + Gmail v1 (OAuth 2.0) |
+| Email Intelligence | [iGPT](https://igpt.ai/) Recall API (optional) |
 | Search | Brave Search API / DuckDuckGo fallback |
 | Market Data | Yahoo Finance Chart API |
 | News | RSS feeds via feedparser |
@@ -223,6 +228,7 @@ app/
     ├── memory_service.py       # Interaction logging + insights
     ├── briefing_service.py     # Morning briefing orchestrator
     ├── heartbeat_service.py    # Proactive check-ins
+    ├── igpt_service.py         # iGPT email intelligence API
     ├── market_service.py       # Stock data (Yahoo Finance)
     ├── news_service.py         # AI news (RSS feeds)
     ├── search_service.py       # Web search (Brave/DDG)
