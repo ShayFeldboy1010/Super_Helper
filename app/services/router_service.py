@@ -147,7 +147,7 @@ User: "מה דעתך על לבנות SaaS לפרילנסרים?"
 }}
 
 context_needed options: "calendar", "tasks", "archive", "email", "web", "synergy", "news", "market"
-- Use "email" when the user asks about emails, inbox, or messages.
+- Use "email" when the user asks about emails, inbox, or messages. Provides deep email intelligence with cited answers when available.
 - Use "calendar" for schedule/events questions.
 - Use "tasks" for to-do related questions.
 - Use "archive" for saved notes or previously stored knowledge.

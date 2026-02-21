@@ -13,6 +13,8 @@ from app.services.news_service import fetch_ai_news
 from app.services.market_service import fetch_market_data
 from app.services.synergy_service import generate_synergy_insights
 from app.services.memory_service import get_relevant_insights, get_pending_follow_ups
+from app.services import igpt_service as igpt
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 TZ = ZoneInfo("Asia/Jerusalem")
@@ -210,9 +212,14 @@ async def generate_morning_briefing(user_id: int) -> str:
     google = GoogleService(user_id)
     await google.authenticate()
 
-    # Parallel data fetch
+    # Parallel data fetch — use iGPT for emails when available
     events_task = google.get_todays_events_detailed()
-    emails_task = google.get_recent_emails(max_results=5)
+    if settings.igpt_enabled:
+        emails_task = igpt.ask(
+            "Summarize my inbox highlights and action items from the last 24 hours"
+        )
+    else:
+        emails_task = google.get_recent_emails(max_results=5)
     news_task = fetch_ai_news(max_items=5, hours_back=24)
     market_task = fetch_market_data()
     tasks_task = get_pending_tasks(user_id, limit=7)
@@ -229,7 +236,7 @@ async def generate_morning_briefing(user_id: int) -> str:
         events = []
     if isinstance(emails, Exception):
         logger.error(f"Emails fetch failed: {emails}")
-        emails = []
+        emails = [] if not settings.igpt_enabled else None
     if isinstance(news, Exception):
         logger.error(f"News fetch failed: {news}")
         news = []
@@ -251,11 +258,14 @@ async def generate_morning_briefing(user_id: int) -> str:
     day_profile = _compute_day_profile(events if isinstance(events, list) else [], tasks if isinstance(tasks, list) else [])
     day_structure = _analyze_day_structure(events if isinstance(events, list) else [], tasks if isinstance(tasks, list) else [])
 
-    # Format email context
-    email_lines = []
-    for e in (emails or []):
-        email_lines.append(f"• From: {e['from']} | Subject: {e['subject']}")
-    emails_str = "\n".join(email_lines) if email_lines else "אין מיילים חדשים."
+    # Format email context — iGPT returns a string, Gmail returns a list
+    if isinstance(emails, str) and emails:
+        emails_str = emails  # iGPT semantic summary
+    elif isinstance(emails, list) and emails:
+        email_lines = [f"• From: {e['from']} | Subject: {e['subject']}" for e in emails]
+        emails_str = "\n".join(email_lines)
+    else:
+        emails_str = "אין מיילים חדשים."
 
     # Generate synergy insights (uses already-fetched news + market)
     try:

@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     STOCK_WATCHLIST: str = "AMZN,PLTR,GOOGL,NVDA,MSFT,META,AAPL"
     STOCK_INDICES: str = "^GSPC,^IXIC,^TA125.TA,TA35.TA"
 
+    # iGPT Email Intelligence
+    IGPT_API_KEY: str = ""
+    IGPT_API_USER: str = ""
+
+    @property
+    def igpt_enabled(self) -> bool:
+        return bool(self.IGPT_API_KEY and self.IGPT_API_USER)
+
     # Search
     BRAVE_SEARCH_API_KEY: str = ""
 

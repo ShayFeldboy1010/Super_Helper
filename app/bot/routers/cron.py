@@ -46,61 +46,88 @@ async def _check_task_reminders(user_id: int) -> int:
 
 
 async def _check_email_alerts(user_id: int) -> int:
-    """Check for urgent unread emails from key contacts. Returns count of alerts sent."""
+    """Check for urgent unread emails. Uses iGPT when available, else keyword matching."""
     try:
-        from app.services.google_svc import GoogleService
+        # iGPT path — semantic urgency detection
+        if settings.igpt_enabled:
+            return await _check_email_alerts_igpt(user_id)
 
-        key_contacts_str = getattr(settings, "ALERT_KEY_CONTACTS", "")
-        urgent_keywords_str = getattr(settings, "ALERT_URGENT_KEYWORDS", "urgent,asap,emergency,critical,deadline,immediately")
-
-        key_contacts = [c.strip().lower() for c in key_contacts_str.split(",") if c.strip()]
-        urgent_keywords = [k.strip().lower() for k in urgent_keywords_str.split(",") if k.strip()]
-
-        if not key_contacts and not urgent_keywords:
-            return 0
-
-        google = GoogleService(user_id)
-        await google.authenticate()
-        emails = await google.get_recent_unread_emails(max_results=10, minutes_back=35)
-
-        if not emails:
-            return 0
-
-        count = 0
-        for email in emails:
-            sender = email.get("from", "").lower()
-            subject = email.get("subject", "").lower()
-            snippet = email.get("snippet", "").lower()
-
-            reason = None
-
-            # Check key contacts
-            for contact in key_contacts:
-                if contact in sender:
-                    reason = f"key contact ({contact})"
-                    break
-
-            # Check urgent keywords
-            if not reason:
-                for keyword in urgent_keywords:
-                    if keyword in subject or keyword in snippet:
-                        reason = f"urgent keyword: \"{keyword}\""
-                        break
-
-            if reason:
-                msg = (
-                    f"📧 Email Alert ({reason})\n"
-                    f"From: {email.get('from', '?')}\n"
-                    f"Subject: {email.get('subject', '?')}\n"
-                    f"{email.get('snippet', '')[:150]}"
-                )
-                await bot.send_message(chat_id=user_id, text=msg)
-                count += 1
-
-        return count
+        # Gmail keyword-matching fallback
+        return await _check_email_alerts_gmail(user_id)
     except Exception as e:
         logger.error(f"Email alert check failed: {e}")
         return 0
+
+
+async def _check_email_alerts_igpt(user_id: int) -> int:
+    """Use iGPT to detect urgent emails semantically."""
+    from app.services import igpt_service as igpt
+
+    answer = await igpt.ask(
+        "Are there any urgent or time-sensitive unread emails in the last 30 minutes "
+        "that need immediate attention? List each with sender, subject, and why it's "
+        "urgent. If nothing is urgent, say 'No urgent emails.'"
+    )
+    if not answer or "no urgent" in answer.lower():
+        return 0
+
+    msg = f"📧 Email Alert (iGPT)\n\n{answer}"
+    await bot.send_message(chat_id=user_id, text=msg)
+    return 1
+
+
+async def _check_email_alerts_gmail(user_id: int) -> int:
+    """Keyword-based urgent email detection via Gmail API."""
+    from app.services.google_svc import GoogleService
+
+    key_contacts_str = getattr(settings, "ALERT_KEY_CONTACTS", "")
+    urgent_keywords_str = getattr(settings, "ALERT_URGENT_KEYWORDS", "urgent,asap,emergency,critical,deadline,immediately")
+
+    key_contacts = [c.strip().lower() for c in key_contacts_str.split(",") if c.strip()]
+    urgent_keywords = [k.strip().lower() for k in urgent_keywords_str.split(",") if k.strip()]
+
+    if not key_contacts and not urgent_keywords:
+        return 0
+
+    google = GoogleService(user_id)
+    await google.authenticate()
+    emails = await google.get_recent_unread_emails(max_results=10, minutes_back=35)
+
+    if not emails:
+        return 0
+
+    count = 0
+    for email in emails:
+        sender = email.get("from", "").lower()
+        subject = email.get("subject", "").lower()
+        snippet = email.get("snippet", "").lower()
+
+        reason = None
+
+        # Check key contacts
+        for contact in key_contacts:
+            if contact in sender:
+                reason = f"key contact ({contact})"
+                break
+
+        # Check urgent keywords
+        if not reason:
+            for keyword in urgent_keywords:
+                if keyword in subject or keyword in snippet:
+                    reason = f"urgent keyword: \"{keyword}\""
+                    break
+
+        if reason:
+            msg = (
+                f"📧 Email Alert ({reason})\n"
+                f"From: {email.get('from', '?')}\n"
+                f"Subject: {email.get('subject', '?')}\n"
+                f"{email.get('snippet', '')[:150]}"
+            )
+            await bot.send_message(chat_id=user_id, text=msg)
+            count += 1
+
+    return count
 
 
 async def _check_stock_alerts(user_id: int) -> int:

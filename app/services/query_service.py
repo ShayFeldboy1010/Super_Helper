@@ -10,6 +10,8 @@ from app.services.news_service import fetch_ai_news
 from app.services.market_service import fetch_market_data, fetch_symbols, extract_tickers_from_query
 from app.services.synergy_service import generate_synergy_insights
 from app.services.memory_service import get_relevant_insights
+from app.services import igpt_service as igpt
+from app.core.config import settings
 from app.core.llm import llm_call
 from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
 
@@ -82,7 +84,13 @@ class QueryService:
                 return f"📝 Saved notes:\n{note_list}"
             return "📝 No matching notes found in archive."
 
-        async def _fetch_email():
+        async def _fetch_email_igpt():
+            answer = await igpt.ask(query_text)
+            if answer:
+                return f"📧 Email Intelligence (iGPT):\n{answer}"
+            return await _fetch_email_gmail()
+
+        async def _fetch_email_gmail():
             emails = await self.google.get_recent_emails(max_results=5)
             if emails:
                 email_lines = [f"- From: {e['from']} | Subject: {e['subject']}\n  {e['snippet'][:100]}" for e in emails]
@@ -149,7 +157,7 @@ class QueryService:
             "tasks": _fetch_tasks,
             "archive": _fetch_archive,
             "notes": _fetch_archive,
-            "email": _fetch_email,
+            "email": _fetch_email_igpt if settings.igpt_enabled else _fetch_email_gmail,
             "web": _fetch_web,
             "news": _fetch_news,
             "market": _fetch_market,
