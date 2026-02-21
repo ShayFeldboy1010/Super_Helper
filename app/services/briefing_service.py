@@ -259,6 +259,9 @@ async def generate_morning_briefing(user_id: int) -> str:
     day_structure = _analyze_day_structure(events if isinstance(events, list) else [], tasks if isinstance(tasks, list) else [])
 
     # Format email context — iGPT returns a string, Gmail returns a list
+    # If iGPT says it can't access, treat as empty so Gmail fallback formatting kicks in
+    if isinstance(emails, str) and "have access" in emails.lower():
+        emails = None
     if isinstance(emails, str) and emails:
         emails_str = emails  # iGPT semantic summary
     elif isinstance(emails, list) and emails:

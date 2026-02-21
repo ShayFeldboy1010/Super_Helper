@@ -88,7 +88,7 @@ class QueryService:
 
         async def _fetch_email_igpt():
             answer = await igpt.ask(query_text)
-            if answer:
+            if answer and "have access" not in answer.lower():
                 return f"📧 Email Intelligence (iGPT):\n{answer}"
             return await _fetch_email_gmail()
 

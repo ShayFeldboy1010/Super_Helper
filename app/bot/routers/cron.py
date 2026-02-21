@@ -47,21 +47,26 @@ async def _check_task_reminders(user_id: int) -> int:
 
 
 async def _check_email_alerts(user_id: int) -> int:
-    """Check for urgent unread emails. Uses iGPT when available, else keyword matching."""
+    """Check for urgent unread emails. Tries iGPT first, falls back to Gmail."""
     try:
-        # iGPT path — semantic urgency detection
         if settings.igpt_enabled:
-            return await _check_email_alerts_igpt(user_id)
+            result = await _check_email_alerts_igpt(user_id)
+            if result is not None:
+                return result
+            # iGPT couldn't help (no access / not indexed) — fall through to Gmail
 
-        # Gmail keyword-matching fallback
         return await _check_email_alerts_gmail(user_id)
     except Exception as e:
         logger.error(f"Email alert check failed: {e}")
         return 0
 
 
-async def _check_email_alerts_igpt(user_id: int) -> int:
-    """Use iGPT to detect urgent emails semantically."""
+async def _check_email_alerts_igpt(user_id: int) -> int | None:
+    """Use iGPT to detect urgent emails semantically.
+
+    Returns int (alerts sent) on success, None if iGPT can't access emails
+    (triggers Gmail fallback).
+    """
     from app.services import igpt_service as igpt
 
     answer = await igpt.ask(
@@ -70,16 +75,26 @@ async def _check_email_alerts_igpt(user_id: int) -> int:
         "urgent. If nothing is urgent, say 'No urgent emails.'"
     )
     if not answer:
-        return 0
+        return None  # iGPT failed — fall back to Gmail
 
-    # Skip non-actionable responses (no access, nothing urgent, etc.)
     lower = answer.lower()
-    skip_phrases = [
-        "no urgent", "no new", "nothing urgent", "no time-sensitive",
-        "don't have access", "i can't access", "i cannot access",
-        "no emails", "not have access",
+
+    # iGPT can't access emails (not indexed yet) — fall back to Gmail
+    no_access_phrases = [
+        "don't have access", "do not have access", "don't have access",
+        "i can't access", "i cannot access", "not have access",
+        "check your email client", "no access",
     ]
-    if any(phrase in lower for phrase in skip_phrases):
+    if any(phrase in lower for phrase in no_access_phrases):
+        logger.info("iGPT has no email access yet, falling back to Gmail")
+        return None
+
+    # Nothing urgent — no alert needed (but iGPT is working)
+    no_urgent_phrases = [
+        "no urgent", "no new", "nothing urgent", "no time-sensitive",
+        "no emails", "no unread",
+    ]
+    if any(phrase in lower for phrase in no_urgent_phrases):
         return 0
 
     msg = f"📧 Email Alert (iGPT)\n\n{answer}"
