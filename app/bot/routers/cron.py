@@ -157,15 +157,29 @@ async def _check_email_alerts_gmail(user_id: int) -> int:
 
 
 async def _check_stock_alerts(user_id: int) -> int:
-    """Check for significant stock moves. Returns count of alerts sent. Max once per day."""
+    """Check for significant stock moves. Tracks per-ticker alerts in DB to survive restarts."""
     try:
-        from app.core.cache import cache_get, cache_set
+        from app.core.database import supabase
         from app.services.market_service import fetch_market_data
 
-        # Daily cooldown — only alert once per calendar day
         today_str = datetime.now(TZ).strftime("%Y-%m-%d")
-        if cache_get(f"stock_alert:{today_str}"):
-            return 0
+
+        # Fetch already-alerted tickers from DB (persists across restarts)
+        try:
+            resp = (
+                supabase.table("interaction_log")
+                .select("bot_response")
+                .eq("user_id", user_id)
+                .eq("action_type", "stock_alert")
+                .gte("created_at", f"{today_str}T00:00:00")
+                .limit(1)
+                .execute()
+            )
+            if resp.data:
+                # Already sent a stock alert today
+                return 0
+        except Exception as e:
+            logger.warning(f"Stock alert dedup check failed: {e}")
 
         threshold = getattr(settings, "STOCK_ALERT_THRESHOLD", 3.0)
         market = await fetch_market_data()
@@ -183,7 +197,18 @@ async def _check_stock_alerts(user_id: int) -> int:
 
         msg = "📊 התראת שוק — תזוזות גדולות היום:\n" + "\n".join(movers)
         await bot.send_message(chat_id=user_id, text=msg)
-        cache_set(f"stock_alert:{today_str}", True, 86400)  # Don't alert again today
+
+        # Persist alert in DB so it survives server restarts
+        try:
+            supabase.table("interaction_log").insert({
+                "user_id": user_id,
+                "user_message": "stock_alert_cron",
+                "bot_response": msg[:500],
+                "action_type": "stock_alert",
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Stock alert dedup write failed: {e}")
+
         return len(movers)
 
     except Exception as e:
