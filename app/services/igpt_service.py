@@ -30,6 +30,7 @@ async def ask(query: str) -> str | None:
         return None
 
     try:
+        logger.info("iGPT ask: %s", query[:80])
         client = _get_client()
         res = await asyncio.to_thread(
             client.recall.ask,
@@ -37,11 +38,14 @@ async def ask(query: str) -> str | None:
             quality="cef-1-normal",
         )
         if res is None:
+            logger.warning("iGPT ask returned None")
             return None
         if isinstance(res, dict) and res.get("error"):
             logger.warning("iGPT ask error: %s", res["error"])
             return None
         if isinstance(res, dict):
+            tokens = res.get("usage", {}).get("total_tokens", "?")
+            logger.info("iGPT ask success — tokens: %s", tokens)
             return res.get("output") or None
         return str(res) if res else None
     except Exception as e:
