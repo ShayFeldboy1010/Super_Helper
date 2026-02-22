@@ -90,6 +90,9 @@ class QueryService:
             answer = await igpt.ask(query_text)
             if answer and "have access" not in answer.lower():
                 return f"📧 Email Intelligence (iGPT):\n{answer}"
+            # Fallback to Gmail — update source label
+            if "email" in source_labels:
+                source_labels["email"] = "Gmail API (iGPT fallback)"
             return await _fetch_email_gmail()
 
         async def _fetch_email_gmail():
@@ -185,7 +188,21 @@ class QueryService:
         results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
 
         context_data = []
+        sources_used = []
         recent_convo = ""
+
+        source_labels = {
+            "calendar": "Google Calendar",
+            "tasks": "Supabase Tasks",
+            "archive": "Archive DB",
+            "notes": "Archive DB",
+            "email": "iGPT Email" if settings.igpt_enabled else "Gmail API",
+            "web": "Web Search",
+            "news": "News RSS",
+            "market": "Market API",
+            "synergy": "Synergy Analysis",
+        }
+
         for label, result in zip(fetch_labels, results):
             if label == "_conversation":
                 recent_convo = result if isinstance(result, str) else ""
@@ -193,6 +210,7 @@ class QueryService:
                 logger.error(f"Error fetching {label}: {result}")
             elif result:
                 context_data.append(result)
+                sources_used.append(source_labels.get(label, label))
 
         # 10. Build system prompt with all context
         full_context = "\n\n".join(context_data) if context_data else ""
@@ -228,4 +246,10 @@ class QueryService:
         )
         if not chat_completion:
             return "Something went wrong. Try again."
-        return chat_completion.choices[0].message.content
+        answer = chat_completion.choices[0].message.content
+
+        # Append sources footer
+        if sources_used:
+            answer += f"\n\n🔧 Sources: {', '.join(sources_used)}"
+
+        return answer
