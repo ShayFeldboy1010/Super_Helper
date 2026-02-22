@@ -14,4 +14,5 @@ google-api-python-client
 feedparser
 beautifulsoup4
 httpx
+igptai
 google-genai

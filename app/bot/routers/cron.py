@@ -47,14 +47,8 @@ async def _check_task_reminders(user_id: int) -> int:
 
 
 async def _check_email_alerts(user_id: int) -> int:
-    """Check for urgent unread emails. Tries iGPT first, falls back to Gmail."""
+    """Check for urgent unread emails. Always uses Gmail (free) to avoid iGPT token costs on cron."""
     try:
-        if settings.igpt_enabled:
-            result = await _check_email_alerts_igpt(user_id)
-            if result is not None:
-                return result
-            # iGPT couldn't help (no access / not indexed) — fall through to Gmail
-
         return await _check_email_alerts_gmail(user_id)
     except Exception as e:
         logger.error(f"Email alert check failed: {e}")

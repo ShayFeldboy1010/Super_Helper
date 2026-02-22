@@ -1,22 +1,24 @@
-"""iGPT Email Intelligence API wrapper — semantic email search and Q&A."""
+"""iGPT Email Intelligence API wrapper — semantic email search and Q&A.
 
+Uses the official igptai SDK for reliable authentication and request handling.
+"""
+
+import asyncio
 import logging
-
-import httpx
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://api.igpt.ai/v1/recall"
-TIMEOUT = 12
 
+def _get_client():
+    """Lazy-init iGPT SDK client."""
+    from igptai import IGPT
 
-def _headers() -> dict:
-    return {
-        "Authorization": f"Bearer {settings.IGPT_API_KEY}",
-        "Content-Type": "application/json",
-    }
+    return IGPT(
+        api_key=settings.IGPT_API_KEY,
+        user=settings.IGPT_API_USER,
+    )
 
 
 async def ask(query: str) -> str | None:
@@ -28,18 +30,20 @@ async def ask(query: str) -> str | None:
         return None
 
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            resp = await client.post(
-                f"{BASE_URL}/ask/",
-                headers=_headers(),
-                json={"query": query, "user": settings.IGPT_API_USER},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("output") or data.get("answer") or data.get("response") or None
-    except httpx.TimeoutException:
-        logger.warning("iGPT ask timed out for query: %s", query[:80])
-        return None
+        client = _get_client()
+        res = await asyncio.to_thread(
+            client.recall.ask,
+            input=query,
+            quality="cef-1-normal",
+        )
+        if res is None:
+            return None
+        if isinstance(res, dict) and res.get("error"):
+            logger.warning("iGPT ask error: %s", res["error"])
+            return None
+        if isinstance(res, dict):
+            return res.get("output") or None
+        return str(res) if res else None
     except Exception as e:
         logger.error("iGPT ask failed: %s", e)
         return None
@@ -59,28 +63,22 @@ async def search(
         return []
 
     try:
-        body: dict = {
-            "query": query,
-            "user": settings.IGPT_API_USER,
-            "max_results": max_results,
-        }
+        client = _get_client()
+        kwargs = {"query": query, "max_results": max_results}
         if date_from:
-            body["date_from"] = date_from
+            kwargs["date_from"] = date_from
         if date_to:
-            body["date_to"] = date_to
+            kwargs["date_to"] = date_to
 
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            resp = await client.post(
-                f"{BASE_URL}/search/",
-                headers=_headers(),
-                json=body,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("results", data) if isinstance(data, dict) else data
-    except httpx.TimeoutException:
-        logger.warning("iGPT search timed out for query: %s", query[:80])
-        return []
+        res = await asyncio.to_thread(client.recall.search, **kwargs)
+        if res is None:
+            return []
+        if isinstance(res, dict) and res.get("error"):
+            logger.warning("iGPT search error: %s", res["error"])
+            return []
+        if isinstance(res, dict):
+            return res.get("results", [])
+        return res if isinstance(res, list) else []
     except Exception as e:
         logger.error("iGPT search failed: %s", e)
         return []
