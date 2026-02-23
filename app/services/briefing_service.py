@@ -368,23 +368,29 @@ MEETING_PREP_PROMPT = (
 
 
 async def generate_meeting_prep(user_id: int) -> list[str]:
-    """Generate prep briefs for upcoming meetings (within 20 min). Returns list of messages."""
+    """Generate prep briefs for upcoming meetings (within 45 min). Returns list of messages."""
     from app.core.cache import cache_get, cache_set
     from app.services.archive_service import search_archive
 
     google = GoogleService(user_id)
     await google.authenticate()
 
-    upcoming = await google.get_upcoming_events_detailed(minutes_ahead=20)
+    upcoming = await google.get_upcoming_events_detailed(minutes_ahead=45)
     if not upcoming:
         return []
 
+    now = datetime.now(ZoneInfo("Asia/Jerusalem"))
     messages = []
     for event in upcoming[:1]:  # Process max 1 per invocation to stay under 10s
         event_id = event.get("event_id", "")
 
         # Skip if already prepped (dedup)
         if cache_get(f"meeting_prep:{event_id}"):
+            continue
+
+        # Skip meetings starting in less than 10 min (too late for prep)
+        start_dt = datetime.fromisoformat(event["start"])
+        if (start_dt - now).total_seconds() / 60 < 10:
             continue
 
         # Skip recurring meetings with no attendees (routine standups)
