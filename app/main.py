@@ -1,3 +1,4 @@
+# Self-improving AI agent connected successfully
 """FastAPI application entry point.
 
 Initializes the Telegram bot webhook, registers routers,

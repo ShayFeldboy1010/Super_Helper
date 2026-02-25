@@ -73,17 +73,21 @@ def execute_claude(instruction: str) -> tuple[bool, str]:
     cmd = [
         CLAUDE_CMD, "-p", instruction,
         "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep",
-        "--yes",
+        "--permission-mode", "bypassPermissions",
     ]
     log(f"Executing: {CLAUDE_CMD} -p '...' (timeout={CLAUDE_TIMEOUT}s)")
 
     try:
+        # Clean env to avoid "nested session" error if launched from Claude Code
+        clean_env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
         result = subprocess.run(
             cmd,
             cwd=PROJECT_DIR,
             capture_output=True,
             text=True,
             timeout=CLAUDE_TIMEOUT,
+            env=clean_env,
         )
         output = (result.stdout or "") + (result.stderr or "")
         output = output[-MAX_OUTPUT:]  # Keep last 10K chars
