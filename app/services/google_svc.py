@@ -202,11 +202,14 @@ class GoogleService:
             logger.error(f"Failed to create event: {e}")
             return None
 
-    async def get_recent_emails(self, max_results: int = 5) -> List[Dict[str, str]]:
-        """Fetch recent emails with sender, subject, and snippet."""
+    async def get_recent_emails(self, max_results: int = 5) -> Optional[List[Dict[str, str]]]:
+        """Fetch recent emails with sender, subject, and snippet.
+
+        Returns None if authentication fails (distinct from [] = no emails).
+        """
         if not self.creds:
             if not await self.authenticate():
-                return []
+                return None
 
         try:
             service = build('gmail', 'v1', credentials=self.creds)
@@ -294,11 +297,14 @@ class GoogleService:
             logger.error(f"Upcoming events detailed API error: {e}")
             return []
 
-    async def search_emails_from_sender(self, sender_email: str, max_results: int = 3) -> List[Dict[str, str]]:
-        """Search Gmail for recent emails from a specific sender."""
+    async def search_emails_from_sender(self, sender_email: str, max_results: int = 3) -> Optional[List[Dict[str, str]]]:
+        """Search Gmail for recent emails from a specific sender.
+
+        Returns None if authentication fails (distinct from [] = no results).
+        """
         if not self.creds:
             if not await self.authenticate():
-                return []
+                return None
 
         try:
             service = build('gmail', 'v1', credentials=self.creds)
@@ -329,11 +335,14 @@ class GoogleService:
             logger.error(f"Gmail sender search error for {sender_email}: {e}")
             return []
 
-    async def get_recent_unread_emails(self, max_results: int = 10, minutes_back: int = 35) -> List[Dict[str, str]]:
-        """Fetch recent unread emails from inbox."""
+    async def get_recent_unread_emails(self, max_results: int = 10, minutes_back: int = 35) -> Optional[List[Dict[str, str]]]:
+        """Fetch recent unread emails from inbox.
+
+        Returns None if authentication fails (distinct from [] = no emails).
+        """
         if not self.creds:
             if not await self.authenticate():
-                return []
+                return None
 
         try:
             import time

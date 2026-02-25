@@ -88,8 +88,19 @@ class QueryService:
 
         async def _fetch_email_igpt():
             answer = await igpt.ask(query_text)
-            if answer and "have access" not in answer.lower():
-                return f"📧 Email Intelligence (iGPT):\n{answer}"
+            if answer:
+                # Detect "no access" responses in English and Hebrew
+                no_access_phrases = [
+                    "have access", "don't have access", "cannot access",
+                    "no access", "unable to access", "not able to access",
+                    "אין לי גישה", "אין גישה", "לא יכול לגשת",
+                ]
+                answer_lower = answer.lower()
+                if not any(phrase in answer_lower for phrase in no_access_phrases):
+                    return f"📧 Email Intelligence (iGPT):\n{answer}"
+                logger.info("iGPT returned no-access response, falling back to Gmail")
+            else:
+                logger.info("iGPT returned empty/None, falling back to Gmail")
             # Fallback to Gmail — update source label
             if "email" in source_labels:
                 source_labels["email"] = "Gmail API (iGPT fallback)"
@@ -97,6 +108,8 @@ class QueryService:
 
         async def _fetch_email_gmail():
             emails = await self.google.get_recent_emails(max_results=5)
+            if emails is None:
+                return "📧 Gmail not connected — use /auth to link your Google account."
             if emails:
                 email_lines = [f"- From: {e['from']} | Subject: {e['subject']}\n  {e['snippet'][:100]}" for e in emails]
                 return "📧 Recent emails:\n" + "\n".join(email_lines)

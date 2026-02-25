@@ -258,15 +258,20 @@ async def generate_morning_briefing(user_id: int) -> str:
     day_profile = _compute_day_profile(events if isinstance(events, list) else [], tasks if isinstance(tasks, list) else [])
     day_structure = _analyze_day_structure(events if isinstance(events, list) else [], tasks if isinstance(tasks, list) else [])
 
-    # Format email context — iGPT returns a string, Gmail returns a list
+    # Format email context — iGPT returns a string, Gmail returns a list (or None if auth failed)
     # If iGPT says it can't access, treat as empty so Gmail fallback formatting kicks in
-    if isinstance(emails, str) and "have access" in emails.lower():
-        emails = None
+    if isinstance(emails, str):
+        no_access_phrases = ["have access", "don't have access", "cannot access",
+                             "אין לי גישה", "אין גישה", "לא יכול לגשת"]
+        if any(phrase in emails.lower() for phrase in no_access_phrases):
+            emails = None
     if isinstance(emails, str) and emails:
         emails_str = emails  # iGPT semantic summary
     elif isinstance(emails, list) and emails:
         email_lines = [f"• From: {e['from']} | Subject: {e['subject']}" for e in emails]
         emails_str = "\n".join(email_lines)
+    elif emails is None:
+        emails_str = "⚠️ Gmail לא מחובר — יש לחבר דרך /auth."
     else:
         emails_str = "אין מיילים חדשים."
 
