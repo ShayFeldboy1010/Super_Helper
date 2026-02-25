@@ -65,9 +65,10 @@ def get_confirmation(user_id: int) -> tuple[str, dict] | None:
         if created.tzinfo is None:
             created = created.replace(tzinfo=TZ)
         age = (datetime.now(TZ) - created).total_seconds()
-        supabase.table("pending_confirmations").delete().eq("user_id", user_id).execute()
         if age > _CONFIRM_TTL:
+            supabase.table("pending_confirmations").delete().eq("user_id", user_id).execute()
             return None
+        supabase.table("pending_confirmations").delete().eq("user_id", user_id).execute()
         return (row["action_name"], row["action_data"])
     except Exception as e:
         logger.warning(f"Failed to get confirmation from DB: {e}")
@@ -197,7 +198,8 @@ async def _handle_confirmation(
             else:
                 bot_response = "שגיאה בחיבור ל-Google."
         else:
-            bot_response = "מספר לא תקין. בוטל."
+            save_confirmation(user_id, action_name, action_data)
+            bot_response = "מספר לא תקין. שלח 1, 2, או 3."
     elif text_lower in ("כן", "yes", "confirm", "אישור"):
         # Yes/confirm actions
         if action_name == "complete_all":
