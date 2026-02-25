@@ -513,6 +513,90 @@ async def _handle_calendar_action(intent, user_id: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Code command interception (approve/reject/code)
+# ---------------------------------------------------------------------------
+
+async def _handle_code_commands(
+    text: str, user_id: int, update_id: int | None,
+    edit_status,
+) -> bool:
+    """Handle approve N, reject N, code status, code <instruction>. Returns True if handled."""
+    import re
+
+    from app.services.memory_service import log_interaction
+
+    text_stripped = text.strip()
+    text_lower = text_stripped.lower()
+
+    # --- approve N ---
+    m = re.match(r'^approve\s+(\d+)$', text_lower)
+    if m:
+        from app.services.code_task_service import approve_proposal
+        idx = int(m.group(1))
+        task = await approve_proposal(user_id, idx)
+        if task:
+            bot_response = f"אושר! נשלח ל-Claude Code.\nTask ID: {task['id'][:8]}..."
+        else:
+            bot_response = f"לא מצאתי הצעה #{idx} ממתינה היום."
+        await edit_status(bot_response)
+        await log_interaction(
+            user_id=user_id, user_message=text, bot_response=bot_response,
+            action_type="system", intent_summary=f"Approve proposal {idx}",
+            telegram_update_id=update_id,
+        )
+        return True
+
+    # --- reject N ---
+    m = re.match(r'^reject\s+(\d+)$', text_lower)
+    if m:
+        from app.services.code_task_service import reject_proposal
+        idx = int(m.group(1))
+        ok = await reject_proposal(user_id, idx)
+        bot_response = f"נדחה הצעה #{idx}." if ok else f"לא מצאתי הצעה #{idx} ממתינה היום."
+        await edit_status(bot_response)
+        await log_interaction(
+            user_id=user_id, user_message=text, bot_response=bot_response,
+            action_type="system", intent_summary=f"Reject proposal {idx}",
+            telegram_update_id=update_id,
+        )
+        return True
+
+    # --- code status ---
+    if text_lower in ("code status", "code_status"):
+        from app.services.code_task_service import format_recent_tasks_message, get_recent_tasks
+        tasks = await get_recent_tasks(user_id, limit=5)
+        bot_response = format_recent_tasks_message(tasks)
+        await edit_status(bot_response)
+        await log_interaction(
+            user_id=user_id, user_message=text, bot_response=bot_response,
+            action_type="system", intent_summary="Code task status",
+            telegram_update_id=update_id,
+        )
+        return True
+
+    # --- code <instruction> ---
+    if text_lower.startswith("code "):
+        from app.services.code_task_service import create_code_task
+        instruction = text_stripped[5:].strip()
+        if not instruction:
+            return False
+        task = await create_code_task(user_id, instruction, source="manual")
+        if task:
+            bot_response = f"נשלח ל-Claude Code!\nTask ID: {task['id'][:8]}...\nאעדכן כשיסתיים."
+        else:
+            bot_response = "שגיאה ביצירת משימת קוד."
+        await edit_status(bot_response)
+        await log_interaction(
+            user_id=user_id, user_message=text, bot_response=bot_response,
+            action_type="system", intent_summary="Direct code task",
+            telegram_update_id=update_id,
+        )
+        return True
+
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Main entry point — called from FastAPI webhook
 # ---------------------------------------------------------------------------
 
@@ -612,6 +696,10 @@ async def process_update(update_data: dict) -> None:
                 return
 
             cancel_confirmation(user_id)
+
+            # --- Code command interception ---
+            if await _handle_code_commands(text, user_id, update_id, edit_status):
+                return
 
             # URL interception
             urls = extract_urls(text)

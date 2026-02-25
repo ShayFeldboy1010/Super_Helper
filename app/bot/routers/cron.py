@@ -482,6 +482,66 @@ async def weekly_review():
         return {"status": "error", "message": str(e)}
 
 
+@router.get("/self-improve", dependencies=[Depends(verify_cron_secret)])
+async def self_improve():
+    """Nightly scan: fetch content, analyze for improvements, send proposals."""
+    user_id = settings.TELEGRAM_USER_ID
+    try:
+        from app.services.improvement_service import run_self_improvement_scan
+        result = await run_self_improvement_scan(user_id)
+
+        msg = result.get("message", "")
+        if msg:
+            # Split if exceeds Telegram 4096 char limit
+            if len(msg) <= 4096:
+                await bot.send_message(chat_id=user_id, text=msg)
+            else:
+                chunks = []
+                current = ""
+                for line in msg.split("\n"):
+                    if len(current) + len(line) + 1 > 4000:
+                        chunks.append(current)
+                        current = line
+                    else:
+                        current += "\n" + line if current else line
+                if current:
+                    chunks.append(current)
+                for chunk in chunks:
+                    await bot.send_message(chat_id=user_id, text=chunk)
+
+        return {
+            "status": "ok",
+            "items_found": result.get("items_found", 0),
+            "proposals": result.get("proposals", 0),
+        }
+
+    except Exception as e:
+        logger.error(f"Self-improve scan failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@router.get("/check-code-tasks", dependencies=[Depends(verify_cron_secret)])
+async def check_code_tasks():
+    """Check for recently completed code tasks and notify user."""
+    user_id = settings.TELEGRAM_USER_ID
+    try:
+        from app.services.code_task_service import format_task_status_message, get_completed_tasks_since
+        tasks = await get_completed_tasks_since(user_id, minutes=35)
+
+        if not tasks:
+            return {"status": "ok", "message": "No completed tasks"}
+
+        for task in tasks:
+            msg = format_task_status_message(task)
+            await bot.send_message(chat_id=user_id, text=msg)
+
+        return {"status": "ok", "notified": len(tasks)}
+
+    except Exception as e:
+        logger.error(f"Code task check failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
 @router.get("/daily-reflection", dependencies=[Depends(verify_cron_secret)])
 async def daily_reflection():
     user_id = settings.TELEGRAM_USER_ID

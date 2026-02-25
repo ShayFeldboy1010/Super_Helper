@@ -23,3 +23,8 @@ jobs:
           curl -sf -X GET "$RENDER_URL/api/cron/check-reminders" \
             -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json"
+
+          echo "Checking code tasks..."
+          curl -sf -X GET "$RENDER_URL/api/cron/check-code-tasks" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" || true
