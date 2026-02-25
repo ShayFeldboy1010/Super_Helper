@@ -43,6 +43,7 @@ Return JSON (no markdown, no code fences):
       "relevance_score": 0.85,
       "title": "Short title (3-5 words max)",
       "description": "One sentence, max 15 words, plain language",
+      "implementation_detail": "Detailed 3-5 sentence explanation: what files to change, what logic to add, what the expected behavior should be. Be specific about function names, endpoints, and data flow.",
       "proposal_type": "feature|optimization|integration|fix"
     }
   ]
@@ -51,7 +52,8 @@ Return JSON (no markdown, no code fences):
 Rules:
 - Only include items with relevance_score > 0.6
 - proposal_type must be one of: feature, optimization, integration, fix
-- description must be short and actionable (one sentence, no jargon)
+- description: short for display (one sentence, no jargon)
+- implementation_detail: detailed enough for a coding agent to implement without ambiguity
 - Skip items that are too vague or unrelated to this bot's domain
 - Maximum 5 proposals per batch
 """
@@ -107,12 +109,14 @@ async def store_proposals(proposals: list[dict], user_id: int) -> int:
     for p in proposals:
         source_item = p.get("_source_item", {})
         try:
+            # Store implementation_detail in description field for Claude Code
+            detail = p.get("implementation_detail") or p.get("description", "")
             supabase.table("improvement_proposals").insert({
                 "user_id": user_id,
                 "source": source_item.get("source", "unknown"),
                 "source_url": source_item.get("url", ""),
                 "title": p.get("title", ""),
-                "description": p.get("description", ""),
+                "description": detail,
                 "proposal_type": p.get("proposal_type", "feature"),
                 "relevance_score": p.get("relevance_score", 0.0),
                 "status": "pending",
