@@ -576,10 +576,14 @@ async def _handle_code_commands(
 
     # --- code <instruction> ---
     if text_lower.startswith("code "):
-        from app.services.code_task_service import create_code_task
+        from app.services.code_task_service import create_code_task, get_last_task_context
         instruction = text_stripped[5:].strip()
         if not instruction:
             return False
+        # Include previous task context so Claude Code has conversation memory
+        context = await get_last_task_context(user_id)
+        if context:
+            instruction = f"{context}New instruction from user: {instruction}"
         task = await create_code_task(user_id, instruction, source="manual")
         if task:
             bot_response = f"נשלח ל-Claude Code!\nTask ID: {task['id'][:8]}...\nאעדכן כשיסתיים."

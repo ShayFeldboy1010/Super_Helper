@@ -86,6 +86,37 @@ async def get_recent_tasks(user_id: int, limit: int = 5) -> list[dict]:
         return []
 
 
+async def get_last_task_context(user_id: int) -> str:
+    """Get the last completed code task's instruction + result as context for follow-up tasks."""
+    try:
+        resp = (
+            supabase.table("code_tasks")
+            .select("instruction,result_summary,claude_output,status")
+            .eq("user_id", user_id)
+            .in_("status", ["completed", "failed"])
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not resp.data:
+            return ""
+        task = resp.data[0]
+        # Use result_summary (short) + first part of claude_output for context
+        output = task.get("claude_output") or task.get("result_summary") or ""
+        output = output[:2000]  # Cap context size
+        instruction = (task.get("instruction") or "")[:500]
+        return (
+            f"=== Previous code task ===\n"
+            f"Instruction: {instruction}\n"
+            f"Status: {task['status']}\n"
+            f"Output: {output}\n"
+            f"=== End previous task ===\n\n"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to get last task context: {e}")
+        return ""
+
+
 async def get_completed_tasks_since(user_id: int, minutes: int = 35) -> list[dict]:
     """Get tasks completed in the last N minutes (for cron notification)."""
     try:
