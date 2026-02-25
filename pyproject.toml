@@ -16,8 +16,6 @@ dependencies = [
     "python-dotenv",
     "pydantic-settings",
     "groq",
-    "openai",
-    "apscheduler",
     "cryptography",
     "google-auth",
     "google-auth-oauthlib",
@@ -25,6 +23,7 @@ dependencies = [
     "feedparser",
     "beautifulsoup4",
     "httpx",
+    "igptai",
     "google-genai",
 ]
 

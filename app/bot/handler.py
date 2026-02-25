@@ -170,6 +170,41 @@ async def _handle_confirmation(
 
     action_name, action_data = pending
 
+    # Disambiguate: user picks option 1/2/3
+    if action_name == "disambiguate":
+        chosen = None
+        for ch in text_stripped:
+            if ch in ("1", "2", "3"):
+                chosen = ch
+                break
+        if chosen and chosen in action_data.get("options", {}):
+            # Re-route — return False so the original text goes through normal pipeline
+            # but force the chosen action by updating the text hint
+            original = action_data.get("original_text", text)
+            chosen_type = action_data["options"][chosen]
+            bot_response = f"הבנתי, מעבד כ-{chosen_type}..."
+            await edit_status(bot_response)
+            await log_interaction(
+                user_id=user_id, user_message=text, bot_response=bot_response,
+                action_type="system", intent_summary=f"Disambiguate → {chosen_type}",
+                telegram_update_id=update_id,
+            )
+            # Now re-process the original text with a forced action type
+            from app.services.memory_service import get_relevant_insights
+            from app.services.router_service import route_intent
+            intent = await route_intent(original, user_id=user_id)
+            memory_ctx = await get_relevant_insights(
+                user_id=user_id, action_type=chosen_type, query_text=original,
+            )
+            # Override the action type to what the user chose
+            intent.classification.action_type = chosen_type
+            intent.classification.confidence = 0.95
+            await _dispatch_intent(original, intent, memory_ctx, user_id, update_id, edit_status)
+            return True
+        # Not a valid choice — re-save and let it pass through
+        save_confirmation(user_id, action_name, action_data)
+        return False
+
     # Schedule actions accept digit input (1-3)
     if action_name == "schedule_task":
         slot_idx = None
@@ -629,10 +664,10 @@ async def process_update(update_data: dict) -> None:
     """Process a single Telegram update (runs as a background task).
 
     Pipeline:
-    1. Extract message text (or transcribe voice)
-    2. Authenticate user via whitelist
-    3. Send typing indicator + status placeholder
-    4. Check for duplicate webhook delivery
+    1. Extract message metadata
+    2. Webhook deduplication (before any expensive work)
+    3. Voice transcription (if audio)
+    4. Authenticate user via whitelist
     5. Handle confirmation replies / URL interception
     6. Classify intent via LLM router
     7. Dispatch to appropriate service
@@ -648,6 +683,22 @@ async def process_update(update_data: dict) -> None:
         user_id = msg.get("from", {}).get("id")
         text = msg.get("text")
         update_id = update_data.get("update_id")
+
+        # --- Webhook deduplication (before any expensive work) ---
+        if update_id:
+            try:
+                dup = (
+                    supabase.table("interaction_log")
+                    .select("id")
+                    .eq("telegram_update_id", update_id)
+                    .limit(1)
+                    .execute()
+                )
+                if dup.data:
+                    logger.info(f"Duplicate update_id {update_id}, skipping")
+                    return
+            except Exception as e:
+                logger.warning(f"Dedup check failed (proceeding): {e}")
 
         # --- Voice message transcription ---
         voice = msg.get("voice") or msg.get("audio")
@@ -687,22 +738,6 @@ async def process_update(update_data: dict) -> None:
         await bot.send_chat_action(chat_id=chat_id, action="typing")
         status = await bot.send_message(chat_id=chat_id, text="\u23f3")
         status_msg_id = status.message_id
-
-        # --- Webhook deduplication ---
-        if update_id:
-            try:
-                dup = (
-                    supabase.table("interaction_log")
-                    .select("id")
-                    .eq("telegram_update_id", update_id)
-                    .limit(1)
-                    .execute()
-                )
-                if dup.data:
-                    logger.info(f"Duplicate update_id {update_id}, skipping")
-                    return
-            except Exception as e:
-                logger.warning(f"Dedup check failed (proceeding): {e}")
 
         # Closure for editing the status message
         async def edit_status(new_text: str) -> None:
