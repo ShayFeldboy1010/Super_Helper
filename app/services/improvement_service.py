@@ -41,8 +41,8 @@ Return JSON (no markdown, no code fences):
       "item_index": 0,
       "relevant": true,
       "relevance_score": 0.85,
-      "title": "Short title for the improvement",
-      "description": "2-3 sentences describing what to implement and why it helps",
+      "title": "Short title (3-5 words max)",
+      "description": "One sentence, max 15 words, plain language",
       "proposal_type": "feature|optimization|integration|fix"
     }
   ]
@@ -51,7 +51,7 @@ Return JSON (no markdown, no code fences):
 Rules:
 - Only include items with relevance_score > 0.6
 - proposal_type must be one of: feature, optimization, integration, fix
-- description must be specific and actionable for a coding agent
+- description must be short and actionable (one sentence, no jargon)
 - Skip items that are too vague or unrelated to this bot's domain
 - Maximum 5 proposals per batch
 """
@@ -135,21 +135,15 @@ def format_proposals_message(proposals: list[dict]) -> str:
         "fix": "🔧",
     }
 
-    lines = [f"🧠 מצאתי {len(proposals)} רעיונות לשיפור עצמי:\n"]
+    lines = [f"🧠 {len(proposals)} רעיונות לשיפור:\n"]
     for i, p in enumerate(proposals, 1):
         emoji = type_emoji.get(p.get("proposal_type", "feature"), "💡")
-        source_item = p.get("_source_item", {})
-        source = source_item.get("source", "")
         title = p.get("title", "No title")
-        desc = p.get("description", "")
-        score = p.get("relevance_score", 0)
-        lines.append(
-            f"{i}. {emoji} [{p.get('proposal_type', 'feature')}] {title}\n"
-            f"   {desc}\n"
-            f"   ({source} | score: {score:.1f})"
-        )
+        # One short sentence from description
+        desc = p.get("description", "").split(".")[0].strip()
+        lines.append(f"{i}. {emoji} {title}\n   {desc}")
 
-    lines.append("\napprove N / reject N / code <instruction>")
+    lines.append("\napprove N / reject N")
     return "\n".join(lines)
 
 
