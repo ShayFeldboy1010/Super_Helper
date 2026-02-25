@@ -184,7 +184,7 @@ Rules:
 """
 
 async def _get_recent_context(user_id: int) -> str:
-    """Fetch last 3 messages + pending tasks for router context."""
+    """Fetch last 5 messages + pending tasks for router context."""
     parts = []
     try:
         # Recent conversation
@@ -193,14 +193,14 @@ async def _get_recent_context(user_id: int) -> str:
             .select("user_message, bot_response")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
-            .limit(3)
+            .limit(5)
             .execute()
         )
         if resp.data:
             lines = []
             for ix in reversed(resp.data):
-                lines.append(f"Shay: {ix['user_message'][:80]}")
-                lines.append(f"Bot: {ix['bot_response'][:100]}")
+                lines.append(f"Shay: {ix['user_message'][:150]}")
+                lines.append(f"Bot: {ix['bot_response'][:300]}")
             parts.append("=== Recent conversation ===\n" + "\n".join(lines))
     except Exception as e:
         logger.warning(f"Failed to fetch recent conversation for router: {e}")

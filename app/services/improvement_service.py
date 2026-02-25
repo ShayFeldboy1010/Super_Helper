@@ -49,12 +49,31 @@ Return JSON (no markdown, no code fences):
   ]
 }
 
+DO NOT suggest any of the following — they are ALREADY implemented:
+- Inline keyboards / confirmation buttons (we use text-based confirmation flow with pending_confirmations table)
+- Email monitoring / Gmail integration (already built via GoogleService + Gmail API, including iGPT deep email intelligence)
+- Calendar integration / scheduling (already built: create events, check schedule, find free slots, schedule tasks into calendar)
+- Voice message support / transcription (already built via Gemini audio transcription)
+- Task management features: create, complete, delete, edit, schedule, recurring tasks, duplicate detection, effort estimates — all exist
+- Morning briefing / daily digest (already built: calendar + tasks + news + market + emails + weather)
+- Evening wrap-up / weekly review (already built)
+- Memory system / conversation context (already built: interaction logging, daily reflection, permanent insights)
+- Web search (already built via Brave API)
+- AI news aggregation (already built via RSS feeds)
+- Stock market tracking and alerts (already built)
+- Weather alerts (already built)
+- Note-taking / URL archive with auto-summarize and tagging (already built)
+- Self-improvement / code task system (already built — that's YOU)
+- Multi-LLM fallback (already built: Gemini primary + Groq/Kimi K2 fallback)
+- Hebrew language support (already the default UI language)
+
 Rules:
 - Only include items with relevance_score > 0.6
 - proposal_type must be one of: feature, optimization, integration, fix
 - description: short for display (one sentence, no jargon)
 - implementation_detail: detailed enough for a coding agent to implement without ambiguity
 - Skip items that are too vague or unrelated to this bot's domain
+- Skip items that suggest features from the DO NOT list above
 - Maximum 5 proposals per batch
 """
 

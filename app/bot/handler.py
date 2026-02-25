@@ -150,7 +150,7 @@ async def _handle_confirmation(
     text: str, user_id: int, update_id: int | None,
     edit_status,
 ) -> bool:
-    """Handle yes/no confirmation replies. Returns True if handled."""
+    """Handle confirmation replies (yes/no/slot number). Returns True if handled."""
     from app.services.google_svc import GoogleService
     from app.services.memory_service import log_interaction
     from app.services.task_service import (
@@ -159,36 +159,29 @@ async def _handle_confirmation(
         delete_task,
     )
 
-    text_lower = text.strip().lower()
-    if text_lower not in ("כן", "yes", "confirm", "אישור"):
-        return False
+    text_stripped = text.strip()
+    text_lower = text_stripped.lower()
 
+    # Check for pending confirmation FIRST
     pending = get_confirmation(user_id)
     if not pending:
         return False
 
     action_name, action_data = pending
 
-    if action_name == "complete_all":
-        count = await complete_all_tasks(user_id)
-        bot_response = f"סיימתי! סימנתי {count} משימות כבוצעו ✅" if count > 0 else "אין משימות פתוחות."
-
-    elif action_name == "delete":
-        result = await delete_task(user_id, action_data["title"])
-        bot_response = f"נמחק: {result['title']} 🗑" if result else f"לא מצאתי את \"{action_data['title']}\"."
-
-    elif action_name == "create_task":
-        task = await create_task(user_id, action_data)
-        bot_response = f"נוסף: {task['title']}" if task else "משהו השתבש בשמירת המשימה."
-
-    elif action_name == "schedule_task":
+    # Schedule actions accept digit input (1-3)
+    if action_name == "schedule_task":
         slot_idx = None
-        for ch in text.strip():
+        for ch in text_stripped:
             if ch.isdigit() and 1 <= int(ch) <= 3:
                 slot_idx = int(ch) - 1
                 break
+        if slot_idx is None:
+            # Not a valid slot number — re-save confirmation so it's not lost
+            save_confirmation(user_id, action_name, action_data)
+            return False
         slots = action_data.get("slots", [])
-        if slot_idx is not None and slot_idx < len(slots):
+        if slot_idx < len(slots):
             slot = slots[slot_idx]
             google_svc = GoogleService(user_id)
             if await google_svc.authenticate():
@@ -204,9 +197,24 @@ async def _handle_confirmation(
             else:
                 bot_response = "שגיאה בחיבור ל-Google."
         else:
-            bot_response = "בוטל."
+            bot_response = "מספר לא תקין. בוטל."
+    elif text_lower in ("כן", "yes", "confirm", "אישור"):
+        # Yes/confirm actions
+        if action_name == "complete_all":
+            count = await complete_all_tasks(user_id)
+            bot_response = f"סיימתי! סימנתי {count} משימות כבוצעו ✅" if count > 0 else "אין משימות פתוחות."
+        elif action_name == "delete":
+            result = await delete_task(user_id, action_data["title"])
+            bot_response = f"נמחק: {result['title']} 🗑" if result else f"לא מצאתי את \"{action_data['title']}\"."
+        elif action_name == "create_task":
+            task = await create_task(user_id, action_data)
+            bot_response = f"נוסף: {task['title']}" if task else "משהו השתבש בשמירת המשימה."
+        else:
+            bot_response = "בוצע."
     else:
-        bot_response = "בוצע."
+        # Not a recognized confirmation input — re-save so it's not consumed
+        save_confirmation(user_id, action_name, action_data)
+        return False
 
     await edit_status(bot_response)
     await log_interaction(
@@ -315,9 +323,20 @@ async def _dispatch_intent(
     elif action_type == "chat":
         from app.core.llm import llm_call as _llm
         from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
+        from app.services.query_service import QueryService
+
+        qs = QueryService(user_id)
+        recent_convo = await qs._get_recent_conversation(limit=5)
+
+        system_parts = [CHIEF_OF_STAFF_IDENTITY]
+        if recent_convo:
+            system_parts.append(f"\n=== Recent conversation ===\n{recent_convo}")
+        if memory_context:
+            system_parts.append(f"\n=== Memory ===\n{memory_context}")
+
         chat_resp = await _llm(
             messages=[
-                {"role": "system", "content": CHIEF_OF_STAFF_IDENTITY},
+                {"role": "system", "content": "\n".join(system_parts)},
                 {"role": "user", "content": text},
             ],
             temperature=0.8,
@@ -695,11 +714,9 @@ async def process_update(update_data: dict) -> None:
 
             await bot.send_chat_action(chat_id=chat_id, action="typing")
 
-            # Confirmation check
+            # Confirmation check (pending confirmations expire via TTL)
             if await _handle_confirmation(text, user_id, update_id, edit_status):
                 return
-
-            cancel_confirmation(user_id)
 
             # --- Code command interception ---
             if await _handle_code_commands(text, user_id, update_id, edit_status):
