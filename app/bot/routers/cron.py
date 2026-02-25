@@ -151,27 +151,30 @@ async def _check_email_alerts_gmail(user_id: int) -> int:
 
 
 async def _check_stock_alerts(user_id: int) -> int:
-    """Check for significant stock moves. Tracks per-ticker alerts in DB to survive restarts."""
+    """Check for significant stock moves. Per-ticker 24h cooldown to avoid repeats."""
     try:
         from app.core.database import supabase
         from app.services.market_service import fetch_market_data
 
-        today_str = datetime.now(TZ).strftime("%Y-%m-%d")
+        # Use UTC for DB queries to match Supabase timestamps
+        cutoff = (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")
 
-        # Fetch already-alerted tickers from DB (persists across restarts)
+        # Fetch tickers already alerted in last 24h
+        already_alerted: set[str] = set()
         try:
             resp = (
                 supabase.table("interaction_log")
-                .select("bot_response")
+                .select("user_message")
                 .eq("user_id", user_id)
                 .eq("action_type", "stock_alert")
-                .gte("created_at", f"{today_str}T00:00:00")
-                .limit(1)
+                .gte("created_at", cutoff)
                 .execute()
             )
-            if resp.data:
-                # Already sent a stock alert today
-                return 0
+            for row in resp.data or []:
+                # user_message stores "stock_alert:NVDA,META,..."
+                msg = row.get("user_message", "")
+                if msg.startswith("stock_alert:"):
+                    already_alerted.update(msg.split(":", 1)[1].split(","))
         except Exception as e:
             logger.warning(f"Stock alert dedup check failed: {e}")
 
@@ -179,12 +182,17 @@ async def _check_stock_alerts(user_id: int) -> int:
         market = await fetch_market_data()
 
         movers = []
+        alerted_symbols = []
         for item_list in [market.get("indices", []), market.get("tickers", [])]:
             for item in item_list:
+                symbol = item.get("symbol", "")
+                if symbol in already_alerted:
+                    continue
                 pct = item.get("change_pct", 0)
                 if abs(pct) >= threshold:
                     arrow = "🟢📈" if pct >= 0 else "🔴📉"
                     movers.append(f"{arrow} {item['name']}: {item.get('price', 0):,.2f} ({pct:+.1f}%)")
+                    alerted_symbols.append(symbol)
 
         if not movers:
             return 0
@@ -192,11 +200,11 @@ async def _check_stock_alerts(user_id: int) -> int:
         msg = "📊 התראת שוק — תזוזות גדולות היום:\n" + "\n".join(movers)
         await bot.send_message(chat_id=user_id, text=msg)
 
-        # Persist alert in DB so it survives server restarts
+        # Persist alerted symbols so they won't repeat for 24h
         try:
             supabase.table("interaction_log").insert({
                 "user_id": user_id,
-                "user_message": "stock_alert_cron",
+                "user_message": "stock_alert:" + ",".join(alerted_symbols),
                 "bot_response": msg[:500],
                 "action_type": "stock_alert",
             }).execute()
