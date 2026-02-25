@@ -5,7 +5,6 @@ import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from app.core.config import settings
 from app.core.database import supabase
 
 logger = logging.getLogger(__name__)
