@@ -10,18 +10,36 @@ jobs:
   self-improve:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Self-Improvement Scan
+      - name: Wake up Render
         env:
           RENDER_URL: ${{ secrets.RENDER_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           if [ -z "$RENDER_URL" ]; then
             echo "RENDER_URL not set, skipping."
             exit 0
           fi
+          echo "Waking up Render..."
+          curl -s "$RENDER_URL/health" --max-time 60 || true
+          sleep 10
 
+      - name: Trigger Self-Improvement Scan
+        env:
+          RENDER_URL: ${{ secrets.RENDER_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
           echo "Triggering self-improvement scan..."
-          curl -sf -X GET "$RENDER_URL/api/cron/self-improve" \
+          response=$(curl -s -w "\n%{http_code}" -X GET "$RENDER_URL/api/cron/self-improve" \
             -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json" \
-            --max-time 120
+            --max-time 300)
+
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+
+          echo "HTTP $http_code"
+          echo "$body"
+
+          if [ "$http_code" -ge 400 ]; then
+            echo "Request failed with HTTP $http_code"
+            exit 1
+          fi
