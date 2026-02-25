@@ -177,6 +177,20 @@ def notify_telegram(success: bool, task_id: str, output: str, commit_hash: str |
         log(f"Telegram notification failed: {e}")
 
 
+def log_to_interaction_log(instruction: str, output: str, success: bool) -> None:
+    """Log code task result to interaction_log so the regular Telegram chat has context."""
+    try:
+        summary = output[:500] if output else ("Done" if success else "Failed")
+        db.table("interaction_log").insert({
+            "user_id": int(TELEGRAM_CHAT_ID),
+            "user_message": f"code {instruction[:200]}",
+            "bot_response": summary,
+            "action_type": "system",
+        }).execute()
+    except Exception as e:
+        log(f"interaction_log write failed: {e}")
+
+
 def complete_task(task_id: str, success: bool, output: str, commit_hash: str | None) -> None:
     """Update task status in Supabase."""
     status = "completed" if success else "failed"
@@ -215,6 +229,7 @@ def process_task(task: dict) -> None:
 
     complete_task(task_id, success, output, commit_hash)
     notify_telegram(success, task_id, output, commit_hash)
+    log_to_interaction_log(instruction, output, success)
 
 
 def main() -> None:
