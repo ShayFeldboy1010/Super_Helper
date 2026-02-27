@@ -11,6 +11,7 @@ This module contains the core message processing pipeline:
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -21,7 +22,7 @@ from app.core.database import supabase
 logger = logging.getLogger(__name__)
 
 TZ = ZoneInfo("Asia/Jerusalem")
-_CONFIRM_TTL = 120  # seconds
+_CONFIRM_TTL = 600  # seconds (10 minutes)
 
 _MODEL_DISPLAY = {
     "gemini-3-flash-preview": "Gemini 3 Flash",
@@ -38,6 +39,7 @@ _MODEL_DISPLAY = {
 def save_confirmation(user_id: int, action_name: str, action_data: dict) -> None:
     """Persist a pending confirmation so the user can reply asynchronously."""
     try:
+        action_data = {**action_data, "_ts": time.time()}
         supabase.table("pending_confirmations").upsert({
             "user_id": user_id,
             "action_name": action_name,
@@ -61,15 +63,21 @@ def get_confirmation(user_id: int) -> tuple[str, dict] | None:
         if not resp.data:
             return None
         row = resp.data[0]
-        created = datetime.fromisoformat(row["created_at"])
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=TZ)
-        age = (datetime.now(TZ) - created).total_seconds()
+        action_data = row["action_data"]
+        # Prefer embedded Unix timestamp (timezone-safe) over created_at
+        ts = action_data.get("_ts") if isinstance(action_data, dict) else None
+        if ts:
+            age = time.time() - ts
+        else:
+            created = datetime.fromisoformat(row["created_at"])
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=ZoneInfo("UTC"))
+            age = (datetime.now(ZoneInfo("UTC")) - created).total_seconds()
         if age > _CONFIRM_TTL:
             supabase.table("pending_confirmations").delete().eq("user_id", user_id).execute()
             return None
         supabase.table("pending_confirmations").delete().eq("user_id", user_id).execute()
-        return (row["action_name"], row["action_data"])
+        return (row["action_name"], action_data)
     except Exception as e:
         logger.warning(f"Failed to get confirmation from DB: {e}")
         return None
@@ -141,6 +149,55 @@ async def _edit_status(chat_id: int, message_id: int, text: str) -> None:
         await bot.edit_message_text(text=text, chat_id=chat_id, message_id=message_id)
     except Exception as e:
         logger.error(f"Failed to edit message: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Stock alert preference handling
+# ---------------------------------------------------------------------------
+
+_ALERT_DISABLE_KEYWORDS = {"תפסיק התראות", "בלי מניות", "stop alerts", "disable stock", "תפסיק מניות", "בטל התראות מניות"}
+_ALERT_ENABLE_KEYWORDS = {"תחזיר התראות", "enable alerts", "חדש מניות", "הפעל התראות מניות", "תפעיל מניות"}
+
+
+async def _handle_alert_preference(
+    text: str, user_id: int, update_id: int | None, edit_status,
+) -> bool:
+    """Detect stock alert preference changes. Returns True if handled."""
+    from app.services.memory_service import log_interaction
+
+    text_lower = text.strip().lower()
+
+    disable = any(kw in text_lower for kw in _ALERT_DISABLE_KEYWORDS)
+    enable = any(kw in text_lower for kw in _ALERT_ENABLE_KEYWORDS)
+
+    if not disable and not enable:
+        return False
+
+    try:
+        if disable:
+            supabase.table("permanent_insights").upsert({
+                "user_id": user_id,
+                "category": "preference",
+                "insight": "stock_alerts_disabled",
+                "source_summary": "User requested to stop stock alerts",
+            }, on_conflict="user_id,insight").execute()
+            bot_response = "התראות מניות כבויות. שלח 'תחזיר התראות' להפעלה מחדש."
+        else:
+            supabase.table("permanent_insights").delete().eq(
+                "user_id", user_id,
+            ).eq("insight", "stock_alerts_disabled").execute()
+            bot_response = "התראות מניות הופעלו מחדש."
+    except Exception as e:
+        logger.error(f"Alert preference update failed: {e}")
+        bot_response = "שגיאה בעדכון העדפות. נסה שוב."
+
+    await edit_status(bot_response)
+    await log_interaction(
+        user_id=user_id, user_message=text, bot_response=bot_response,
+        action_type="system", intent_summary="Alert preference change",
+        telegram_update_id=update_id,
+    )
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -538,17 +595,30 @@ async def _handle_task_action(text: str, intent, user_id: int, edit_status) -> s
     task = await create_task(user_id, task_data)
     if task:
         due_str = ""
+        cal_str = ""
         if task.get("due_at"):
             try:
                 dt = datetime.fromisoformat(task["due_at"])
                 due_str = f"\n📅 {dt.strftime('%a %b %d, %H:%M')}"
             except (ValueError, TypeError):
                 due_str = f"\n📅 {task['due_at']}"
+            # Sync to Google Calendar (non-blocking, skip if not authenticated)
+            try:
+                google = GoogleService(user_id)
+                if await google.authenticate():
+                    start_dt = datetime.fromisoformat(task["due_at"])
+                    if start_dt.tzinfo is None:
+                        start_dt = start_dt.replace(tzinfo=TZ)
+                    link = await google.create_calendar_event(task["title"], start_dt)
+                    if link:
+                        cal_str = f"\n🔗 {link}"
+            except Exception as e:
+                logger.debug(f"Calendar sync skipped: {e}")
         recurrence = task_data.get("recurrence")
         recur_str = f"\n🔄 חוזר {recurrence}" if recurrence else ""
         effort = task_data.get("effort")
         effort_str = f"\n⏱ {effort}" if effort else ""
-        return f"נוסף: {task['title']}{due_str}{recur_str}{effort_str}"
+        return f"נוסף: {task['title']}{due_str}{recur_str}{effort_str}{cal_str}"
     return "משהו השתבש בשמירת המשימה. נסה שוב?"
 
 
@@ -788,6 +858,10 @@ async def process_update(update_data: dict) -> None:
 
             # Confirmation check (pending confirmations expire via TTL)
             if await _handle_confirmation(text, user_id, update_id, edit_status):
+                return
+
+            # --- Alert preference interception ---
+            if await _handle_alert_preference(text, user_id, update_id, edit_status):
                 return
 
             # --- Code command interception ---

@@ -20,12 +20,37 @@ async def verify_cron_secret(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Invalid cron secret")
 
 async def _check_task_reminders(user_id: int) -> int:
-    """Send reminders for overdue tasks. Returns count sent."""
+    """Send reminders for overdue tasks. Returns count sent (4h cooldown per task)."""
+    from app.core.database import supabase
+
     tasks = await get_overdue_tasks(user_id)
     if not tasks:
         return 0
 
-    for task in tasks:
+    # Fetch task IDs already reminded in last 4 hours
+    already_reminded: set[str] = set()
+    try:
+        cutoff = (datetime.now(ZoneInfo("UTC")) - timedelta(hours=4)).isoformat()
+        resp = (
+            supabase.table("interaction_log")
+            .select("user_message")
+            .eq("user_id", user_id)
+            .eq("action_type", "task_reminder")
+            .gte("created_at", cutoff)
+            .execute()
+        )
+        for row in resp.data or []:
+            msg = row.get("user_message", "")
+            if msg.startswith("task_reminder:"):
+                already_reminded.update(msg.split(":", 1)[1].split(","))
+    except Exception as e:
+        logger.warning(f"Task reminder dedup check failed: {e}")
+
+    to_remind = [t for t in tasks if str(t.get("id", "")) not in already_reminded]
+    if not to_remind:
+        return 0
+
+    for task in to_remind:
         try:
             due_str = ""
             if task.get('due_at'):
@@ -43,7 +68,19 @@ async def _check_task_reminders(user_id: int) -> int:
         except Exception as e:
             logger.error(f"Failed to send alert for task {task.get('id')}: {e}")
 
-    return len(tasks)
+    # Log reminded task IDs for dedup
+    try:
+        reminded_ids = ",".join(str(t["id"]) for t in to_remind if t.get("id"))
+        supabase.table("interaction_log").insert({
+            "user_id": user_id,
+            "user_message": f"task_reminder:{reminded_ids}",
+            "bot_response": f"Reminded {len(to_remind)} overdue tasks",
+            "action_type": "task_reminder",
+        }).execute()
+    except Exception as e:
+        logger.warning(f"Task reminder dedup write failed: {e}")
+
+    return len(to_remind)
 
 
 async def _check_email_alerts(user_id: int) -> int:
@@ -156,8 +193,23 @@ async def _check_stock_alerts(user_id: int) -> int:
         from app.core.database import supabase
         from app.services.market_service import fetch_market_data
 
-        # Use UTC for DB queries to match Supabase timestamps
-        cutoff = (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")
+        # Check if user disabled stock alerts
+        try:
+            pref = (
+                supabase.table("permanent_insights")
+                .select("id")
+                .eq("user_id", user_id)
+                .eq("insight", "stock_alerts_disabled")
+                .limit(1)
+                .execute()
+            )
+            if pref.data:
+                return 0
+        except Exception as e:
+            logger.warning(f"Stock alert preference check failed: {e}")
+
+        # Use timezone-aware UTC for DB queries to match Supabase timestamps
+        cutoff = (datetime.now(ZoneInfo("UTC")) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")
 
         # Fetch tickers already alerted in last 24h
         already_alerted: set[str] = set()
