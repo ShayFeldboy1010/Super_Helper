@@ -67,16 +67,19 @@ def _md_to_telegram_html(text: str) -> str:
     return text.strip()
 
 
-def _wrap_gemini_response(response) -> _CompatResponse:
-    text = _md_to_telegram_html(response.text or "")
+def _wrap_gemini_response(response, *, is_json: bool = False) -> _CompatResponse:
+    text = response.text or ""
+    if not is_json:
+        text = _md_to_telegram_html(text)
     return _CompatResponse(choices=[_Choice(message=_Message(content=text))])
 
 
-def _wrap_groq_response(response) -> _CompatResponse:
+def _wrap_groq_response(response, *, is_json: bool = False) -> _CompatResponse:
     """Clean Groq response through the same markdown→HTML pipeline."""
     raw = response.choices[0].message.content if response.choices else ""
-    text = _md_to_telegram_html(raw)
-    return _CompatResponse(choices=[_Choice(message=_Message(content=text))])
+    if not is_json:
+        raw = _md_to_telegram_html(raw)
+    return _CompatResponse(choices=[_Choice(message=_Message(content=raw))])
 
 
 def _convert_messages(messages: list[dict]) -> tuple[str | None, str]:
@@ -117,6 +120,7 @@ async def _gemini_call(
         config_kwargs["response_mime_type"] = "application/json"
 
     config = types.GenerateContentConfig(**config_kwargs)
+    is_json = bool(response_format and response_format.get("type") == "json_object")
 
     for attempt in range(2):
         try:
@@ -128,7 +132,7 @@ async def _gemini_call(
                 ),
                 timeout=timeout,
             )
-            return _wrap_gemini_response(response)
+            return _wrap_gemini_response(response, is_json=is_json)
         except Exception as e:
             if attempt == 0:
                 logger.warning(f"Gemini ({model}) attempt 1 failed ({e}), retrying in 1s...")
@@ -153,13 +157,15 @@ async def _groq_call(
     if response_format:
         call_kwargs["response_format"] = response_format
 
+    is_json = bool(response_format and response_format.get("type") == "json_object")
+
     for attempt in range(2):
         try:
             result = await asyncio.wait_for(
                 _groq_client.chat.completions.create(**call_kwargs),
                 timeout=timeout,
             )
-            return _wrap_groq_response(result)
+            return _wrap_groq_response(result, is_json=is_json)
         except Exception as e:
             if attempt == 0:
                 logger.warning(f"Groq emergency attempt 1 failed ({e}), retrying in 1s...")

@@ -34,6 +34,22 @@ _MODEL_DISPLAY = {
 
 
 # ---------------------------------------------------------------------------
+# Greeting fast-path — skip LLM router for obvious greetings
+# ---------------------------------------------------------------------------
+
+_GREETINGS = {
+    "היי", "הי", "שלום", "בוקר טוב", "ערב טוב", "לילה טוב", "מה נשמע",
+    "מה קורה", "אהלן", "יו", "תודה", "תודה רבה", "מה העניינים",
+    "hi", "hey", "hello", "yo", "thanks", "good morning", "sup",
+}
+
+
+def _is_greeting(text: str) -> bool:
+    """Return True if text is an obvious greeting/casual message."""
+    return text.strip().lower().rstrip("!?.,") in _GREETINGS
+
+
+# ---------------------------------------------------------------------------
 # Typing keep-alive — sends "typing" action every 4s until stopped
 # ---------------------------------------------------------------------------
 
@@ -873,6 +889,25 @@ async def process_update(update_data: dict) -> None:
             urls = extract_urls(text)
             if urls:
                 await _handle_url(text, urls, user_id, update_id, edit_status)
+                return
+
+            # Greeting fast-path — skip LLM router for obvious greetings
+            if _is_greeting(text):
+                from app.models.router_models import ActionClassification, RouterResponse
+                intent_result = RouterResponse(
+                    classification=ActionClassification(
+                        action_type="chat", confidence=0.99, summary="Greeting",
+                    ),
+                )
+                memory_result = await get_relevant_insights(
+                    user_id=user_id, action_type="chat", query_text=text,
+                )
+                if isinstance(memory_result, Exception):
+                    memory_result = ""
+                await _dispatch_intent(
+                    text, intent_result, memory_result,
+                    user_id, update_id, edit_status,
+                )
                 return
 
             # Parallel intent classification + memory retrieval
