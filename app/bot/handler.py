@@ -236,12 +236,6 @@ async def _handle_confirmation(
     """Handle confirmation replies (yes/no/slot number). Returns True if handled."""
     from app.services.google_svc import GoogleService
     from app.services.memory_service import log_interaction
-    from app.services.task_service import (
-        complete_all_tasks,
-        create_task,
-        delete_task,
-        delete_task_by_id,
-    )
 
     text_stripped = text.strip()
     text_lower = text_stripped.lower()
@@ -308,55 +302,52 @@ async def _handle_confirmation(
         save_confirmation(user_id, action_name, action_data)
         return False
 
-    # Schedule actions accept digit input (1-3)
-    if action_name == "schedule_task":
-        slot_idx = None
-        for ch in text_stripped:
-            if ch.isdigit() and 1 <= int(ch) <= 3:
-                slot_idx = int(ch) - 1
-                break
-        if slot_idx is None:
-            # Not a valid slot number — re-save confirmation so it's not lost
-            save_confirmation(user_id, action_name, action_data)
-            return False
-        slots = action_data.get("slots", [])
-        if slot_idx < len(slots):
-            slot = slots[slot_idx]
-            google_svc = GoogleService(user_id)
-            if await google_svc.authenticate():
-                start_dt = datetime.fromisoformat(slot["start"])
-                end_dt = datetime.fromisoformat(slot["end"])
-                link = await google_svc.create_calendar_event(
-                    action_data["task_title"], start_dt, end_dt=end_dt,
-                )
-                bot_response = (
-                    f"נקבע: {action_data['task_title']}\n{slot['day']} {slot['time']}\n{link}"
-                    if link else "לא הצלחתי ליצור אירוע."
-                )
+    # task_needs_time: user provides the time for a pending reminder
+    if action_name == "task_needs_time":
+        title = action_data.get("title", "")
+        # Re-route through the router to parse the combined message
+        from app.services.router_service import route_intent
+        combined = f"תזכיר לי {title} {text_stripped}"
+        intent = await route_intent(combined, user_id=user_id)
+
+        if intent.classification.action_type == "task" and intent.task:
+            start_dt = _parse_task_datetime(intent.task.due_date, intent.task.time)
+            if start_dt:
+                from datetime import timedelta
+                google_svc = GoogleService(user_id)
+                if await google_svc.authenticate():
+                    end_dt = start_dt + timedelta(minutes=30)
+                    link = await google_svc.create_calendar_event(title, start_dt, end_dt=end_dt)
+                    bot_response = (
+                        f"נקבע: {title}\n📅 {start_dt.strftime('%d/%m %H:%M')}\n{link}"
+                        if link else "לא הצלחתי ליצור אירוע ביומן."
+                    )
+                else:
+                    bot_response = "שגיאה בחיבור ל-Google."
             else:
-                bot_response = "שגיאה בחיבור ל-Google."
+                # Still no time — ask again
+                save_confirmation(user_id, "task_needs_time", {"title": title})
+                bot_response = f"לא הבנתי את הזמן. מתי לקבוע את \"{title}\"? (למשל: מחר ב-10, היום ב-14:00)"
         else:
-            save_confirmation(user_id, action_name, action_data)
-            bot_response = "מספר לא תקין. שלח 1, 2, או 3."
+            # Router didn't parse as task — try raw datetime parse
+            start_dt = _parse_task_datetime(text_stripped, None)
+            if start_dt:
+                from datetime import timedelta
+                google_svc = GoogleService(user_id)
+                if await google_svc.authenticate():
+                    end_dt = start_dt + timedelta(minutes=30)
+                    link = await google_svc.create_calendar_event(title, start_dt, end_dt=end_dt)
+                    bot_response = (
+                        f"נקבע: {title}\n📅 {start_dt.strftime('%d/%m %H:%M')}\n{link}"
+                        if link else "לא הצלחתי ליצור אירוע ביומן."
+                    )
+                else:
+                    bot_response = "שגיאה בחיבור ל-Google."
+            else:
+                save_confirmation(user_id, "task_needs_time", {"title": title})
+                bot_response = f"לא הבנתי את הזמן. מתי לקבוע את \"{title}\"? (למשל: מחר ב-10, היום ב-14:00)"
     elif text_norm in _YES or first_word in _YES:
-        # Yes/confirm actions (flexible matching)
-        if action_name == "complete_all":
-            count = await complete_all_tasks(user_id)
-            bot_response = f"סיימתי! סימנתי {count} משימות כבוצעו ✅" if count > 0 else "אין משימות פתוחות."
-        elif action_name == "delete":
-            task_id = action_data.get("id")
-            if task_id:
-                result = await delete_task_by_id(task_id)
-                title = action_data.get("title", "")
-                bot_response = f"נמחק: {title} 🗑" if result else f"לא מצאתי את \"{title}\"."
-            else:
-                result = await delete_task(user_id, action_data["title"])
-                bot_response = f"נמחק: {result['title']} 🗑" if result else f"לא מצאתי את \"{action_data['title']}\"."
-        elif action_name == "create_task":
-            task = await create_task(user_id, action_data)
-            bot_response = f"נוסף: {task['title']}" if task else "משהו השתבש בשמירת המשימה."
-        else:
-            bot_response = "בוצע."
+        bot_response = "בוצע."
     else:
         # Not a recognized confirmation input — re-save so it's not consumed
         logger.info(f"Confirmation not matched: action={action_name}, text_norm='{text_norm}', re-saving")
@@ -515,136 +506,89 @@ async def _dispatch_intent(
         )
 
 
+def _parse_task_datetime(due_date_str: str | None, time_str: str | None) -> datetime | None:
+    """Parse LLM date/time output into a timezone-aware datetime.
+
+    Returns None if no date is provided or if date-only without time
+    (triggers the 'מתי?' flow).
+    """
+    if not due_date_str:
+        return None
+
+    d = due_date_str.strip().lower()
+    now = datetime.now(TZ)
+    today = now.date()
+
+    from datetime import time as _time, timedelta
+
+    target_date = None
+    parsed_time = None
+
+    if d == "today":
+        target_date = today
+    elif d == "tomorrow":
+        target_date = today + timedelta(days=1)
+    else:
+        # Try "YYYY-MM-DD HH:MM:SS" (full datetime from LLM)
+        try:
+            parsed_dt = datetime.strptime(d, "%Y-%m-%d %H:%M:%S")
+            target_date = parsed_dt.date()
+            # Only count as having time if not midnight/9am default
+            if parsed_dt.hour != 0 or parsed_dt.minute != 0:
+                parsed_time = parsed_dt.time()
+        except ValueError:
+            # Try plain "YYYY-MM-DD"
+            try:
+                target_date = datetime.strptime(d, "%Y-%m-%d").date()
+            except ValueError:
+                return None
+
+    if not target_date:
+        return None
+
+    # Resolve time: explicit parsed_time > time_str > None (ask user)
+    if parsed_time:
+        return datetime.combine(target_date, parsed_time).replace(tzinfo=TZ)
+    if time_str:
+        try:
+            t = datetime.strptime(time_str.strip(), "%H:%M").time()
+            return datetime.combine(target_date, t).replace(tzinfo=TZ)
+        except ValueError:
+            pass
+    # No time at all — return None to trigger "מתי?" flow
+    return None
+
+
 async def _handle_task_action(text: str, intent, user_id: int, edit_status) -> str | None:
-    """Process task-related actions (create, complete, delete, edit, schedule)."""
+    """Create a Google Calendar event from a task/reminder intent."""
     from app.services.google_svc import GoogleService
-    from app.services.task_service import (
-        _match_task,
-        complete_task,
-        create_task,
-        edit_task,
-        get_pending_tasks,
-    )
 
-    action = getattr(intent.task, "action", "create")
+    title = intent.task.title or text
+    due_date_str = intent.task.due_date
+    time_str = intent.task.time
 
-    if action == "complete":
-        result = await complete_task(user_id, intent.task.title)
-        if result:
-            return f"בוצע: {result['title']} ✅"
-        pending = await get_pending_tasks(user_id, limit=20)
-        if pending:
-            task_list = "\n".join(f"{i + 1}. {t['title']}" for i, t in enumerate(pending))
-            return f"לא מצאתי \"{intent.task.title}\" במשימות הפתוחות.\n\nהמשימות שלך:\n{task_list}"
-        return f"לא מצאתי \"{intent.task.title}\" — אין משימות פתוחות בכלל."
+    # Check Google auth first
+    google = GoogleService(user_id)
+    if not await google.authenticate():
+        login_url = settings.GOOGLE_REDIRECT_URI.replace("/auth/callback", "/auth/login")
+        return f"צריך לחבר Google קודם:\n{login_url}"
 
-    if action == "complete_all":
-        pending = await get_pending_tasks(user_id, limit=50)
-        count = len(pending) if pending else 0
-        if count == 0:
-            return "אין משימות פתוחות."
-        save_confirmation(user_id, "complete_all", {})
-        task_list = "\n".join(f"  - {t['title']}" for t in pending[:10])
-        extra = f"\n  ... ועוד {count - 10}" if count > 10 else ""
-        return f"עומד לסמן {count} משימות כבוצעו:\n{task_list}{extra}\n\nשלח 'כן' לאישור."
+    # Parse datetime
+    start_dt = _parse_task_datetime(due_date_str, time_str)
 
-    if action == "delete":
-        existing = await get_pending_tasks(user_id, limit=50)
-        match = _match_task(existing, intent.task.title) if existing else None
-        if not match:
-            if existing:
-                task_list = "\n".join(f"{i + 1}. {t['title']}" for i, t in enumerate(existing))
-                return f"לא מצאתי \"{intent.task.title}\".\n\nהמשימות שלך:\n{task_list}"
-            return "אין משימות פתוחות."
-        save_confirmation(user_id, "delete", {"title": match["title"], "id": match["id"]})
-        return f"עומד למחוק: \"{match['title']}\"\nשלח 'כן' לאישור."
+    if not start_dt:
+        # No time specified — ask the user
+        save_confirmation(user_id, "task_needs_time", {"title": title})
+        return f"מתי לקבוע את \"{title}\"?"
 
-    if action == "schedule":
-        existing = await get_pending_tasks(user_id, limit=50)
-        match = _match_task(existing, intent.task.title) if existing else None
-        if not match:
-            return f"לא מצאתי משימה בשם \"{intent.task.title}\" לתזמון."
-        google = GoogleService(user_id)
-        if not await google.authenticate():
-            login_url = settings.GOOGLE_REDIRECT_URI.replace("/auth/callback", "/auth/login")
-            return f"צריך לחבר Google קודם:\n{login_url}"
-        effort_map = {"15m": 15, "30m": 30, "1h": 60, "2h": 120, "4h": 240}
-        effort_str = match.get("effort", "1h")
-        duration = effort_map.get(effort_str, 60)
-        slots = await google.find_free_slots(duration_minutes=duration, days_ahead=3, max_slots=3)
-        if slots:
-            lines = [f"חלונות פנויים ל-\"{match['title']}\" ({effort_str}):"]
-            for i, s in enumerate(slots, 1):
-                lines.append(f"{i}. {s['day']} {s['time']}")
-            lines.append("\nשלח את המספר לקביעה, או אמור 'לא' לביטול.")
-            save_confirmation(user_id, "schedule_task", {
-                "task_title": match["title"],
-                "slots": slots,
-            })
-            return "\n".join(lines)
-        return "לא מצאתי חלונות פנויים ב-3 הימים הקרובים."
+    # Create 30-min calendar event
+    from datetime import timedelta
+    end_dt = start_dt + timedelta(minutes=30)
+    link = await google.create_calendar_event(title, start_dt, end_dt=end_dt)
 
-    if action == "edit":
-        updates: dict = {}
-        if getattr(intent.task, "new_title", None):
-            updates["title"] = intent.task.new_title
-        if getattr(intent.task, "new_due_date", None):
-            updates["due_date"] = intent.task.new_due_date
-        if getattr(intent.task, "new_priority", None) is not None:
-            updates["priority"] = intent.task.new_priority
-        result = await edit_task(user_id, intent.task.title, updates)
-        if result:
-            changes = []
-            if "title" in updates:
-                changes.append(f"שם חדש: \"{updates['title']}\"")
-            if "due_date" in updates:
-                changes.append(f"נדחה ל-{updates['due_date']}")
-            if "priority" in updates:
-                changes.append(f"עדיפות: {updates['priority']}")
-            return f"עודכן: {result['title']}\n" + ", ".join(changes)
-        pending = await get_pending_tasks(user_id, limit=20)
-        if pending:
-            task_list = "\n".join(f"{i + 1}. {t['title']}" for i, t in enumerate(pending))
-            return f"לא מצאתי \"{intent.task.title}\".\n\nהמשימות שלך:\n{task_list}"
-        return f"לא מצאתי \"{intent.task.title}\" — אין משימות פתוחות."
-
-    # Default: create task (with duplicate detection)
-    task_data = intent.task.model_dump()
-    existing = await get_pending_tasks(user_id, limit=50)
-    if existing:
-        dup = _match_task(existing, task_data.get("title", ""))
-        if dup:
-            save_confirmation(user_id, "create_task", task_data)
-            return f"כבר יש משימה דומה: \"{dup['title']}\"\nרוצה שאוסיף בכל זאת?"
-
-    task = await create_task(user_id, task_data)
-    if task:
-        due_str = ""
-        cal_str = ""
-        if task.get("due_at"):
-            try:
-                dt = datetime.fromisoformat(task["due_at"])
-                due_str = f"\n📅 {dt.strftime('%a %b %d, %H:%M')}"
-            except (ValueError, TypeError):
-                due_str = f"\n📅 {task['due_at']}"
-            # Sync to Google Calendar (non-blocking, skip if not authenticated)
-            try:
-                google = GoogleService(user_id)
-                if await google.authenticate():
-                    start_dt = datetime.fromisoformat(task["due_at"])
-                    if start_dt.tzinfo is None:
-                        start_dt = start_dt.replace(tzinfo=TZ)
-                    link = await google.create_calendar_event(task["title"], start_dt)
-                    if link:
-                        cal_str = f"\n🔗 {link}"
-            except Exception as e:
-                logger.debug(f"Calendar sync skipped: {e}")
-        recurrence = task_data.get("recurrence")
-        recur_str = f"\n🔄 חוזר {recurrence}" if recurrence else ""
-        effort = task_data.get("effort")
-        effort_str = f"\n⏱ {effort}" if effort else ""
-        return f"נוסף: {task['title']}{due_str}{recur_str}{effort_str}{cal_str}"
-    return "משהו השתבש בשמירת המשימה. נסה שוב?"
+    if link:
+        return f"נקבע: {title}\n📅 {start_dt.strftime('%d/%m %H:%M')}\n{link}"
+    return "לא הצלחתי ליצור אירוע ביומן."
 
 
 async def _handle_calendar_action(intent, user_id: int) -> str:

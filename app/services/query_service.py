@@ -54,14 +54,6 @@ class QueryService:
             date_label = target_date if target_date else "today"
             return f"📅 Events for {date_label}:\n" + "\n".join(events)
 
-        async def _fetch_tasks():
-            response = supabase.table("tasks").select("*").eq("user_id", self.user_id).eq("status", "pending").execute()
-            tasks = response.data
-            if tasks:
-                task_list = "\n".join([f"- {t['title']} (Due: {t.get('due_at')}, Effort: {t.get('effort', '-')})" for t in tasks])
-                return f"✅ Open tasks:\n{task_list}"
-            return "✅ No open tasks."
-
         async def _fetch_archive():
             from datetime import datetime as _dt
             from datetime import timedelta as _td
@@ -172,7 +164,6 @@ class QueryService:
         # Build parallel fetch list based on context_needed
         fetch_map = {
             "calendar": _fetch_calendar,
-            "tasks": _fetch_tasks,
             "archive": _fetch_archive,
             "notes": _fetch_archive,
             "email": _fetch_email_igpt if settings.igpt_enabled else _fetch_email_gmail,
@@ -206,7 +197,6 @@ class QueryService:
 
         source_labels = {
             "calendar": "Google Calendar",
-            "tasks": "Supabase Tasks",
             "archive": "Archive DB",
             "notes": "Archive DB",
             "email": "iGPT Email" if settings.igpt_enabled else "Gmail API",

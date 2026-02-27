@@ -10,7 +10,6 @@ from app.core.prompts import CHIEF_OF_STAFF_IDENTITY
 from app.services.google_svc import GoogleService
 from app.services.market_service import fetch_market_data
 from app.services.memory_service import get_pending_follow_ups, get_relevant_insights
-from app.services.task_service import get_overdue_tasks, get_pending_tasks
 
 logger = logging.getLogger(__name__)
 TZ = ZoneInfo("Asia/Jerusalem")
@@ -30,10 +29,6 @@ async def generate_weekly_review(user_id: int) -> str | None:
         )
         interactions = resp.data or []
 
-        # Fetch completed + pending tasks
-        pending = await get_pending_tasks(user_id, limit=10)
-        overdue = await get_overdue_tasks(user_id)
-
         # Fetch insights
         insights = await get_relevant_insights(user_id, "query")
 
@@ -42,14 +37,10 @@ async def generate_weekly_review(user_id: int) -> str | None:
             [f"- [{ix['action_type']}] {ix['intent_summary'] or ix['user_message'][:50]}"
              for ix in interactions[:20]]
         )
-        pending_str = "\n".join([f"- {t['title']}" for t in pending]) if pending else "None"
-        overdue_str = "\n".join([f"- {t['title']}" for t in overdue]) if overdue else "None"
 
         prompt = (
             f"Here's Shay's weekly summary:\n\n"
             f"This week's interactions ({len(interactions)}):\n{interaction_summary}\n\n"
-            f"Open tasks:\n{pending_str}\n\n"
-            f"Overdue tasks:\n{overdue_str}\n\n"
             f"Existing insights:\n{insights or 'None yet'}\n\n"
             f"Write a short weekly review for Shay. Include:\n"
             f"1. What stood out this week (from the interactions)\n"
@@ -75,14 +66,8 @@ async def generate_weekly_review(user_id: int) -> str | None:
 
 
 async def generate_goal_checkin(user_id: int) -> str | None:
-    """Mid-week check-in — are high-priority tasks on track?"""
+    """Mid-week check-in — how's the day looking?"""
     try:
-        pending = await get_pending_tasks(user_id, limit=10)
-        overdue = await get_overdue_tasks(user_id)
-
-        if not pending and not overdue:
-            return None  # Nothing to nudge about
-
         # Get calendar for today
         google = GoogleService(user_id)
         if await google.authenticate():
@@ -90,24 +75,20 @@ async def generate_goal_checkin(user_id: int) -> str | None:
         else:
             events = []
 
-        insights = await get_relevant_insights(user_id, "task")
+        if not events:
+            return None  # Nothing to nudge about
 
-        pending_str = "\n".join(
-            [f"- {t['title']} (priority: {t.get('priority', 0)}, due: {t.get('due_at', 'none')})"
-             for t in pending]
-        )
-        overdue_str = "\n".join([f"- ⚠️ {t['title']} (was due: {t.get('due_at')})" for t in overdue]) if overdue else "None — nice work"
+        insights = await get_relevant_insights(user_id, "query")
+
         events_str = "\n".join(events) if events else "Calendar is clear"
 
         prompt = (
             f"Mid-week check-in for Shay.\n\n"
-            f"Open tasks:\n{pending_str}\n\n"
-            f"Overdue tasks:\n{overdue_str}\n\n"
             f"Today's calendar:\n{events_str}\n\n"
             f"Insights:\n{insights or 'None'}\n\n"
             f"Write a short, direct message — a friendly nudge.\n"
-            f"If there are overdue tasks — remind gently but clearly.\n"
-            f"If everything's on track — a quick good word.\n"
+            f"If the day looks busy — note what's important.\n"
+            f"If everything's light — a quick good word.\n"
             f"Be like a friend who cares, not like an app."
         )
 
@@ -152,28 +133,24 @@ async def generate_evening_wrapup(user_id: int) -> str | None:
             tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
             tomorrow_events = await google.get_events_for_date(tomorrow)
 
-        # Parallel fetch: overdue tasks, follow-ups, market data
-        overdue, follow_ups, market = await asyncio.gather(
-            get_overdue_tasks(user_id),
+        # Parallel fetch: follow-ups, market data
+        follow_ups, market = await asyncio.gather(
             get_pending_follow_ups(user_id, limit=5),
             fetch_market_data(),
             return_exceptions=True,
         )
-        if isinstance(overdue, Exception):
-            overdue = []
         if isinstance(follow_ups, Exception):
             follow_ups = []
         if isinstance(market, Exception):
             market = {"indices": [], "tickers": []}
 
-        if not todays and not overdue and len(tomorrow_events) <= 1:
+        if not todays and len(tomorrow_events) <= 1:
             return None  # Quiet day, don't bother
 
         today_summary = "\n".join(
             [f"- {ix.get('intent_summary') or ix['user_message'][:40]}" for ix in todays]
         ) if todays else "Quiet day"
         tomorrow_str = "\n".join(tomorrow_events) if tomorrow_events else "Calendar is clear"
-        overdue_str = "\n".join([f"- {t['title']}" for t in overdue]) if overdue else "None"
 
         # Format follow-ups
         followup_str = "None"
@@ -196,7 +173,6 @@ async def generate_evening_wrapup(user_id: int) -> str | None:
             f"Evening wrap-up for Shay (now {now.strftime('%H:%M')}):\n\n"
             f"What happened today ({len(todays)} interactions):\n{today_summary}\n\n"
             f"Tomorrow's calendar:\n{tomorrow_str}\n\n"
-            f"Things still open:\n{overdue_str}\n\n"
             f"Open follow-ups:\n{followup_str}\n\n"
         )
         if movers_str:
@@ -204,7 +180,7 @@ async def generate_evening_wrapup(user_id: int) -> str | None:
         prompt += (
             "Write a short evening message — recap + preview of tomorrow.\n"
             "If there's something critical tomorrow, highlight it.\n"
-            "If there are open follow-ups, mention the most important one.\n"
+            "If there are open follow-ups or commitments, mention the most important one.\n"
             "If there were notable market moves, include a quick note.\n"
             "Tone: calm, direct, like a friend syncing at end of day."
         )

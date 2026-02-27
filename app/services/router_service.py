@@ -20,59 +20,18 @@ Day of week: {current_day}
 
 Categories & Schemas:
 
-1. **task**: Create, complete, edit, or delete a task/reminder.
-Hebrew example - create:
-User: "תזכיר לי לקנות חלב מחר"
+1. **task**: Create a reminder — goes straight to Google Calendar.
+Hebrew example - with date and time:
+User: "תזכיר לי לקנות חלב מחר ב-10"
 {{
   "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Create reminder: buy milk"}},
-  "task": {{"action": "create", "title": "לקנות חלב", "due_date": "2026-02-17 09:00:00", "time": null, "priority": 1, "category": "shopping"}}
+  "task": {{"title": "לקנות חלב", "due_date": "2026-02-17 10:00:00", "time": null}}
 }}
-Hebrew example - complete:
-User: "עשיתי את הקניות"
+Hebrew example - no time specified:
+User: "תזכיר לי לקנות חלב"
 {{
-  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Complete task: shopping"}},
-  "task": {{"action": "complete", "title": "הקניות"}}
-}}
-Hebrew example - complete ALL:
-User: "סיימתי הכל" / "כל המשימות בוצעו"
-{{
-  "classification": {{"action_type": "task", "confidence": 0.95, "summary": "Complete all tasks"}},
-  "task": {{"action": "complete_all", "title": ""}}
-}}
-Example - create recurring:
-User: "תזכיר לי כל יום לעשות ספורט"
-{{
-  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Create daily recurring task: exercise"}},
-  "task": {{"action": "create", "title": "ספורט", "due_date": "2026-02-17 09:00:00", "priority": 1, "recurrence": "daily"}}
-}}
-Example - edit (rename):
-{{
-  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Rename task: buy milk to buy oat milk"}},
-  "task": {{"action": "edit", "title": "Buy milk", "new_title": "Buy oat milk"}}
-}}
-Example - edit (reschedule):
-User: "תדחה את הקניות ליום ראשון"
-{{
-  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Reschedule task: shopping to Sunday"}},
-  "task": {{"action": "edit", "title": "הקניות", "new_due_date": "2026-02-22 09:00:00"}}
-}}
-Example - delete:
-User: "תמחק את המשימה של הרופא"
-{{
-  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Delete task: doctor"}},
-  "task": {{"action": "delete", "title": "הרופא"}}
-}}
-Example - create with effort:
-User: "תזכיר לי לכתוב API docs, זה כשעתיים עבודה"
-{{
-  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Create task with effort estimate"}},
-  "task": {{"action": "create", "title": "לכתוב API docs", "due_date": "2026-02-17 09:00:00", "priority": 1, "effort": "2h"}}
-}}
-Example - schedule task in calendar:
-User: "תזמן את המשימה של ה-API docs ביומן" / "תקבע לי זמן למשימה"
-{{
-  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Schedule task in calendar"}},
-  "task": {{"action": "schedule", "title": "API docs"}}
+  "classification": {{"action_type": "task", "confidence": 0.9, "summary": "Create reminder: buy milk"}},
+  "task": {{"title": "לקנות חלב", "due_date": null, "time": null}}
 }}
 
 2. **calendar**: A specific event with a time/place.
@@ -147,10 +106,9 @@ User: "מה דעתך על לבנות SaaS לפרילנסרים?"
   "query": {{"query": "מה דעתך על לבנות SaaS לפרילנסרים?", "context_needed": [], "target_date": null}}
 }}
 
-context_needed options: "calendar", "tasks", "archive", "email", "web", "synergy", "news", "market"
+context_needed options: "calendar", "archive", "email", "web", "synergy", "news", "market"
 - Use "email" when the user asks about emails, inbox, or messages. Provides deep email intelligence with cited answers when available.
 - Use "calendar" for schedule/events questions.
-- Use "tasks" for to-do related questions.
 - Use "archive" for saved notes or previously stored knowledge.
 - Use "news" when the user asks about AI news, AI developments, "מה חדש ב-AI", tech news, or any AI/tech industry updates.
 - Use "market" when the user asks about stocks, stock prices, "מניות", market status, specific tickers, or any financial market data.
@@ -164,15 +122,9 @@ Rules:
 - If it's a greeting, thanks, opinion, or casual message — classify as "chat" (NOT "query").
 - If the user asks a question that needs external data (calendar, tasks, emails, stocks, news, web search) — classify as "query".
 - If it's a specific event with time, prefer 'calendar' over 'task'.
-- **CRITICAL — TASK CLASSIFICATION**: Only classify as "task" when the user EXPLICITLY asks to create, complete, edit, or delete a task/reminder.
+- **CRITICAL — TASK CLASSIFICATION**: Only classify as "task" when the user EXPLICITLY asks to CREATE a reminder/task.
   - Create keywords: "תזכיר לי", "צור משימה", "הוסף תזכורת", "תרשום משימה", "remind me", "add task"
-  - Complete keywords: "סיימתי", "עשיתי", "השלמתי", "בוצע", "completed", "done", "finished"
-  - Complete ALL keywords: "כל המשימות בוצעו", "עשיתי הכל", "סיימתי הכל" — use action "complete_all" with empty title
-  - Edit keywords: "שנה", "עדכן", "דחה", "postpone", "reschedule", "rename"
-  - Delete keywords: "מחק", "תמחק", "הסר", "delete", "remove"
-  - Recurring keywords: "כל יום", "כל שבוע", "כל חודש", "every day", "daily", "weekly", "monthly"
-  - Schedule keywords: "תזמן", "תקבע ביומן", "schedule", "find time for" — use action "schedule" with the task title
-  - Effort keywords: when the user mentions duration like "שעתיים", "חצי שעה", "2 hours", "30 minutes" — add "effort" field: "15m", "30m", "1h", "2h", or "4h"
+  - If the user says "עשיתי", "סיימתי", "מחק", "תמחק", "שנה", "דחה" (complete/delete/edit) — classify as "chat" and respond that tasks are now managed directly in Google Calendar.
   - If the user just MENTIONS something but doesn't explicitly ask — classify as "query" or "chat".
 - **ARCHIVE SEARCH**: When the user asks "מה שמרתי על", "what did I save about X" — classify as "query" with context_needed=["archive"].
 - **ARCHIVE TEMPORAL**: When the user asks "מה שמרתי השבוע/היום/בחודש האחרון", add "archive_since" field: "today", "week", "month", or "year".
@@ -204,23 +156,6 @@ async def _get_recent_context(user_id: int) -> str:
             parts.append("=== Recent conversation ===\n" + "\n".join(lines))
     except Exception as e:
         logger.warning(f"Failed to fetch recent conversation for router: {e}")
-
-    try:
-        # Pending tasks (so router can match "mark the blue task" etc.)
-        resp = (
-            supabase.table("tasks")
-            .select("title, due_at, priority")
-            .eq("user_id", user_id)
-            .eq("status", "pending")
-            .order("priority", desc=True)
-            .limit(10)
-            .execute()
-        )
-        if resp.data:
-            task_lines = [f"- {t['title']}" for t in resp.data]
-            parts.append("=== Open tasks ===\n" + "\n".join(task_lines))
-    except Exception as e:
-        logger.warning(f"Failed to fetch tasks for router: {e}")
 
     return "\n\n".join(parts)
 

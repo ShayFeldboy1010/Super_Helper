@@ -14,7 +14,6 @@ from app.services.market_service import fetch_market_data
 from app.services.memory_service import get_pending_follow_ups, get_relevant_insights
 from app.services.news_service import fetch_ai_news
 from app.services.synergy_service import generate_synergy_insights
-from app.services.task_service import get_pending_tasks
 
 logger = logging.getLogger(__name__)
 TZ = ZoneInfo("Asia/Jerusalem")
@@ -82,18 +81,7 @@ def _format_market_context(market: dict) -> str:
     return "\n".join(lines) if lines else "אין נתוני שוק."
 
 
-def _format_tasks_context(tasks: list[dict]) -> str:
-    """Format pending tasks as bullet points."""
-    if not tasks:
-        return "אין משימות פתוחות."
-    lines = []
-    for t in tasks[:7]:
-        due = f" (due: {t.get('due_at', 'none')})" if t.get("due_at") else ""
-        lines.append(f"• {t['title']}{due}")
-    return "\n".join(lines)
-
-
-def _compute_day_profile(events: list[dict], tasks: list[dict]) -> str:
+def _compute_day_profile(events: list[dict]) -> str:
     """Return context-specific instructions based on day of week and schedule density."""
     now = datetime.now(TZ)
     day_name = now.strftime("%A")  # e.g. "Sunday"
@@ -101,17 +89,6 @@ def _compute_day_profile(events: list[dict], tasks: list[dict]) -> str:
 
     # Count timed events
     timed_count = sum(1 for ev in events if "T" in ev.get("start", ""))
-
-    # Check for overdue tasks
-    overdue = []
-    for t in tasks:
-        if t.get("due_at"):
-            try:
-                due = datetime.fromisoformat(t["due_at"])
-                if due < now:
-                    overdue.append(t["title"])
-            except (ValueError, TypeError):
-                pass
 
     parts = [f"היום {day_name}."]
 
@@ -127,19 +104,13 @@ def _compute_day_profile(events: list[dict], tasks: list[dict]) -> str:
     if timed_count >= 4:
         parts.append(f"יום פגישות צפוף ({timed_count} פגישות): סמן חלונות לעבודה מרוכזת והזהר מפגישות רצופות.")
     elif timed_count == 0:
-        parts.append("בלי פגישות: הזדמנות לעבודה עמוקה. תציע לטפל במשימה בעדיפות הגבוהה ביותר.")
-
-    # Overdue tasks
-    if overdue:
-        parts.append(f"התראת איחור: {len(overdue)} משימות באיחור — סמן בולט: {', '.join(overdue[:3])}")
+        parts.append("בלי פגישות: הזדמנות לעבודה עמוקה.")
 
     return " ".join(parts)
 
 
-def _analyze_day_structure(events: list[dict], tasks: list[dict]) -> str:
-    """Compute free slots, back-to-back warnings, and unscheduled priorities. Pure Python, no LLM."""
-    now = datetime.now(TZ)
-    today = now.date()
+def _analyze_day_structure(events: list[dict]) -> str:
+    """Compute free slots and back-to-back warnings. Pure Python, no LLM."""
     lines = []
 
     # Parse timed events into (start, end, summary)
@@ -180,30 +151,6 @@ def _analyze_day_structure(events: list[dict], tasks: list[dict]) -> str:
     if back_to_back:
         lines.append("Back-to-back warnings:\n" + "\n".join(back_to_back))
 
-    # Tasks due today
-    due_today = []
-    for t in tasks:
-        if t.get("due_at"):
-            try:
-                due = datetime.fromisoformat(t["due_at"])
-                if due.date() == today:
-                    due_today.append(f"  • {t['title']} (due {due.strftime('%H:%M')})")
-            except (ValueError, TypeError):
-                pass
-
-    if due_today:
-        lines.append("Tasks due today:\n" + "\n".join(due_today))
-
-    # Unscheduled high-priority tasks (priority >= 2, no due date)
-    unscheduled_hp = [
-        f"  • {t['title']} (priority {t.get('priority', 0)})"
-        for t in tasks
-        if t.get("priority", 0) >= 2 and not t.get("due_at")
-    ]
-
-    if unscheduled_hp:
-        lines.append("Unscheduled high-priority tasks:\n" + "\n".join(unscheduled_hp))
-
     return "\n\n".join(lines)
 
 
@@ -222,11 +169,10 @@ async def generate_morning_briefing(user_id: int) -> str:
         emails_task = google.get_recent_emails(max_results=5)
     news_task = fetch_ai_news(max_items=5, hours_back=24)
     market_task = fetch_market_data()
-    tasks_task = get_pending_tasks(user_id, limit=7)
     followups_task = get_pending_follow_ups(user_id, limit=5)
 
-    events, emails, news, market, tasks, follow_ups = await asyncio.gather(
-        events_task, emails_task, news_task, market_task, tasks_task, followups_task,
+    events, emails, news, market, follow_ups = await asyncio.gather(
+        events_task, emails_task, news_task, market_task, followups_task,
         return_exceptions=True,
     )
 
@@ -243,9 +189,6 @@ async def generate_morning_briefing(user_id: int) -> str:
     if isinstance(market, Exception):
         logger.error(f"Market fetch failed: {market}")
         market = {"indices": [], "tickers": []}
-    if isinstance(tasks, Exception):
-        logger.error(f"Tasks fetch failed: {tasks}")
-        tasks = []
     if isinstance(follow_ups, Exception):
         logger.error(f"Follow-ups fetch failed: {follow_ups}")
         follow_ups = []
@@ -255,8 +198,8 @@ async def generate_morning_briefing(user_id: int) -> str:
     conflicts_str = "\n".join(conflicts) if conflicts else "אין התנגשויות."
 
     # Compute day profile and structure analysis
-    day_profile = _compute_day_profile(events if isinstance(events, list) else [], tasks if isinstance(tasks, list) else [])
-    day_structure = _analyze_day_structure(events if isinstance(events, list) else [], tasks if isinstance(tasks, list) else [])
+    day_profile = _compute_day_profile(events if isinstance(events, list) else [])
+    day_structure = _analyze_day_structure(events if isinstance(events, list) else [])
 
     # Format email context — iGPT returns a string, Gmail returns a list (or None if auth failed)
     # If iGPT says it can't access, treat as empty so Gmail fallback formatting kicks in
@@ -303,8 +246,7 @@ async def generate_morning_briefing(user_id: int) -> str:
         f"📧 Recent Emails:\n{emails_str}\n\n"
         f"🤖 AI News:\n{_format_news_context(news)}\n\n"
         f"📊 Market:\n{_format_market_context(market)}\n\n"
-        f"💡 Market-AI Synergy:\n{synergy_insights}\n\n"
-        f"✅ Open Tasks:\n{_format_tasks_context(tasks)}"
+        f"💡 Market-AI Synergy:\n{synergy_insights}"
     )
 
     # Add follow-ups to context if any
@@ -320,13 +262,12 @@ async def generate_morning_briefing(user_id: int) -> str:
         f"הקשר היום: {day_profile}\n\n"
         "בנה בריפינג בוקר חד לטלגרם. שיהיה סריק ונקי.\n\n"
         "סעיפים (אמוג'י ככותרת בשורה נפרדת, אחריו נקודות):\n"
-        "1. 📋 סדר יום\n"
+        "1. 📋 סדר יום (כולל תזכורות מהיומן)\n"
         "1b. 🗓 תוכנית יום (רק אם יש בעיות/פערים — תציע איך לבנות את היום)\n"
         "2. 🤖 חדשות AI\n"
         "3. 📊 שוק\n"
         "4. 💡 סינרגיה\n"
-        "5. ✅ משימות\n"
-        "6. 🔄 המשכים (תזכיר התחייבויות פתוחות משיחות קודמות — רק אם יש)\n\n"
+        "5. 🔄 המשכים (תזכיר התחייבויות פתוחות משיחות קודמות — רק אם יש)\n\n"
         "כללי פורמט (קפדני):\n"
         "- כל כותרת סעיף בשורה אחת עם אמוג'י, אחריה שורה ריקה\n"
         "- נקודות קצרות (שורה אחת כל אחת), תתחיל כל אחת עם חץ או מקף\n"
@@ -356,8 +297,7 @@ async def generate_morning_briefing(user_id: int) -> str:
         f"בריפינג בוקר\n\n"
         f"📅 יומן:\n{_format_events_context(events)}\n\n"
         f"{''.join(c + chr(10) for c in conflicts)}"
-        f"📧 מיילים:\n{emails_str}\n\n"
-        f"✅ משימות:\n{_format_tasks_context(tasks)}"
+        f"📧 מיילים:\n{emails_str}"
     )
 
 

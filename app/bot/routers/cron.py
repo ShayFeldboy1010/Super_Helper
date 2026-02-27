@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from app.bot.loader import bot
 from app.core.config import settings
 from app.services.memory_service import extract_follow_ups, get_pending_follow_ups, run_daily_reflection
-from app.services.task_service import get_overdue_tasks
 
 router = APIRouter(prefix="/api/cron", tags=["cron"])
 logger = logging.getLogger(__name__)
@@ -18,70 +17,6 @@ async def verify_cron_secret(authorization: str = Header(None)):
     expected = f"Bearer {settings.M_WEBHOOK_SECRET}"
     if not authorization or authorization != expected:
         raise HTTPException(status_code=401, detail="Invalid cron secret")
-
-async def _check_task_reminders(user_id: int) -> int:
-    """Send reminders for overdue tasks. Returns count sent (4h cooldown per task)."""
-    from app.core.database import supabase
-
-    tasks = await get_overdue_tasks(user_id)
-    if not tasks:
-        return 0
-
-    # Fetch task IDs already reminded in last 4 hours
-    already_reminded: set[str] = set()
-    try:
-        cutoff = (datetime.now(ZoneInfo("UTC")) - timedelta(hours=4)).isoformat()
-        resp = (
-            supabase.table("interaction_log")
-            .select("user_message")
-            .eq("user_id", user_id)
-            .eq("action_type", "task_reminder")
-            .gte("created_at", cutoff)
-            .execute()
-        )
-        for row in resp.data or []:
-            msg = row.get("user_message", "")
-            if msg.startswith("task_reminder:"):
-                already_reminded.update(msg.split(":", 1)[1].split(","))
-    except Exception as e:
-        logger.warning(f"Task reminder dedup check failed: {e}")
-
-    to_remind = [t for t in tasks if str(t.get("id", "")) not in already_reminded]
-    if not to_remind:
-        return 0
-
-    for task in to_remind:
-        try:
-            due_str = ""
-            if task.get('due_at'):
-                try:
-                    dt = datetime.fromisoformat(task['due_at'])
-                    due_str = f"\nהיה אמור להיות ב: {dt.strftime('%d/%m %H:%M')}"
-                except (ValueError, TypeError):
-                    due_str = f"\nהיה אמור להיות ב: {task['due_at']}"
-            msg = (
-                f"🚨 עדיין לא עשית את זה:\n"
-                f"{task['title']}{due_str}\n\n"
-                f"תטפל בזה או תגיד לי למחוק 💪"
-            )
-            await bot.send_message(chat_id=user_id, text=msg)
-        except Exception as e:
-            logger.error(f"Failed to send alert for task {task.get('id')}: {e}")
-
-    # Log reminded task IDs for dedup
-    try:
-        reminded_ids = ",".join(str(t["id"]) for t in to_remind if t.get("id"))
-        supabase.table("interaction_log").insert({
-            "user_id": user_id,
-            "user_message": f"task_reminder:{reminded_ids}",
-            "bot_response": f"Reminded {len(to_remind)} overdue tasks",
-            "action_type": "task_reminder",
-        }).execute()
-    except Exception as e:
-        logger.warning(f"Task reminder dedup write failed: {e}")
-
-    return len(to_remind)
-
 
 async def _check_email_alerts(user_id: int) -> int:
     """Check for urgent unread emails. Always uses Gmail (free) to avoid iGPT token costs on cron."""
@@ -387,8 +322,7 @@ async def check_reminders():
     user_id = settings.TELEGRAM_USER_ID
 
     # Run all checks in parallel
-    task_count, followup_count, email_alerts, stock_alerts, weather_alert = await asyncio.gather(
-        _check_task_reminders(user_id),
+    followup_count, email_alerts, stock_alerts, weather_alert = await asyncio.gather(
         _check_followup_reminders(user_id),
         _check_email_alerts(user_id),
         _check_stock_alerts(user_id),
@@ -399,7 +333,6 @@ async def check_reminders():
     # Handle exceptions gracefully
     results = {}
     for name, val in [
-        ("task_reminders", task_count),
         ("followup_reminders", followup_count),
         ("email_alerts", email_alerts),
         ("stock_alerts", stock_alerts),
@@ -472,21 +405,14 @@ async def daily_brief():
         logger.error(f"Enhanced briefing failed: {e}, falling back to basic")
         # Fallback: basic briefing
         from app.services.google_svc import GoogleService
-        from app.services.task_service import get_pending_tasks
 
         google = GoogleService(user_id)
         calendar_lines = await google.get_todays_events()
         calendar_str = "\n".join(calendar_lines)
 
-        tasks = await get_pending_tasks(user_id)
-        task_str = "No open tasks."
-        if tasks:
-            task_str = "\n".join([f"• {t['title']}" for t in tasks])
-
         msg = (
             f"בריפינג בוקר\n\n"
-            f"📅 יומן:\n{calendar_str}\n\n"
-            f"✅ משימות:\n{task_str}"
+            f"📅 יומן:\n{calendar_str}"
         )
         await bot.send_message(chat_id=user_id, text=msg)
         return {"status": "ok", "message": "Basic briefing sent (fallback)"}
