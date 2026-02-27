@@ -163,6 +163,13 @@ async def _handle_confirmation(
 
     text_stripped = text.strip()
     text_lower = text_stripped.lower()
+    # Strip punctuation for flexible yes/no matching (handles "כן!", "yes.", etc.)
+    _PUNCT = str.maketrans("", "", "!?.,;:\"'(){}[]")
+    text_norm = text_lower.translate(_PUNCT).strip()
+    first_word = text_norm.split()[0] if text_norm else ""
+
+    _YES = {"כן", "yes", "confirm", "אישור", "ok", "אוקי", "בטח", "sure", "yep", "כ"}
+    _NO = {"לא", "no", "cancel", "ביטול", "לבטל", "nope"}
 
     # Check for pending confirmation FIRST
     pending = get_confirmation(user_id)
@@ -170,6 +177,19 @@ async def _handle_confirmation(
         return False
 
     action_name, action_data = pending
+    logger.info(f"Confirmation found: action={action_name}, text='{text_stripped}', norm='{text_norm}'")
+
+    # --- Cancel / No ---
+    if text_norm in _NO or first_word in _NO:
+        cancel_confirmation(user_id)  # already consumed, but ensure cleanup
+        bot_response = "בוטל."
+        await edit_status(bot_response)
+        await log_interaction(
+            user_id=user_id, user_message=text, bot_response=bot_response,
+            action_type="system", intent_summary=f"Cancelled {action_name}",
+            telegram_update_id=update_id,
+        )
+        return True
 
     # Disambiguate: user picks option 1/2/3
     if action_name == "disambiguate":
@@ -236,8 +256,8 @@ async def _handle_confirmation(
         else:
             save_confirmation(user_id, action_name, action_data)
             bot_response = "מספר לא תקין. שלח 1, 2, או 3."
-    elif text_lower in ("כן", "yes", "confirm", "אישור"):
-        # Yes/confirm actions
+    elif text_norm in _YES or first_word in _YES:
+        # Yes/confirm actions (flexible matching)
         if action_name == "complete_all":
             count = await complete_all_tasks(user_id)
             bot_response = f"סיימתי! סימנתי {count} משימות כבוצעו ✅" if count > 0 else "אין משימות פתוחות."
@@ -257,6 +277,7 @@ async def _handle_confirmation(
             bot_response = "בוצע."
     else:
         # Not a recognized confirmation input — re-save so it's not consumed
+        logger.info(f"Confirmation not matched: action={action_name}, text_norm='{text_norm}', re-saving")
         save_confirmation(user_id, action_name, action_data)
         return False
 
