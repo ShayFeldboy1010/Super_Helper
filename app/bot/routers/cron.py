@@ -469,10 +469,8 @@ async def weekly_review():
         return {"status": "error", "message": str(e)}
 
 
-@router.get("/self-improve", dependencies=[Depends(verify_cron_secret)])
-async def self_improve():
-    """Nightly scan: fetch content, analyze for improvements, send proposals."""
-    user_id = settings.TELEGRAM_USER_ID
+async def _run_self_improve_background(user_id: int) -> None:
+    """Background task: scan sources, analyze, send results via Telegram."""
     try:
         from app.services.improvement_service import run_self_improvement_scan
         result = await run_self_improvement_scan(user_id)
@@ -496,15 +494,18 @@ async def self_improve():
                 for chunk in chunks:
                     await bot.send_message(chat_id=user_id, text=chunk, parse_mode="HTML")
 
-        return {
-            "status": "ok",
-            "items_found": result.get("items_found", 0),
-            "proposals": result.get("proposals", 0),
-        }
+        logger.info(f"Self-improve scan complete: {result.get('items_found', 0)} items, {result.get('proposals', 0)} proposals")
 
     except Exception as e:
-        logger.error(f"Self-improve scan failed: {e}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Self-improve background scan failed: {e}", exc_info=True)
+
+
+@router.get("/self-improve", dependencies=[Depends(verify_cron_secret)])
+async def self_improve():
+    """Nightly scan: kick off in background to avoid Render timeout."""
+    user_id = settings.TELEGRAM_USER_ID
+    asyncio.create_task(_run_self_improve_background(user_id))
+    return {"status": "ok", "message": "Scan started in background"}
 
 
 @router.get("/check-code-tasks", dependencies=[Depends(verify_cron_secret)])
