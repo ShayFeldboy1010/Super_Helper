@@ -79,6 +79,7 @@ class QueryService:
             return "📝 No matching notes found in archive."
 
         async def _fetch_email_igpt():
+            _fetch_email_igpt._fell_back = False
             answer = await igpt.ask(query_text)
             if answer:
                 # Detect "no access" responses in English and Hebrew
@@ -93,9 +94,8 @@ class QueryService:
                 logger.info("iGPT returned no-access response, falling back to Gmail")
             else:
                 logger.info("iGPT returned empty/None, falling back to Gmail")
-            # Fallback to Gmail — update source label
-            if "email" in source_labels:
-                source_labels["email"] = "Gmail API (iGPT fallback)"
+            # Fallback to Gmail — mark for source label update
+            _fetch_email_igpt._fell_back = True
             return await _fetch_email_gmail()
 
         async def _fetch_email_gmail():
@@ -205,6 +205,10 @@ class QueryService:
             "market": "Market API",
             "synergy": "Synergy Analysis",
         }
+
+        # Update email source label if iGPT fell back to Gmail
+        if getattr(_fetch_email_igpt, "_fell_back", False):
+            source_labels["email"] = "Gmail API (iGPT fallback)"
 
         for label, result in zip(fetch_labels, results):
             if label == "_conversation":
