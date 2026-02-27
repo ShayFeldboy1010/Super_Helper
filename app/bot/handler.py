@@ -158,6 +158,7 @@ async def _handle_confirmation(
         complete_all_tasks,
         create_task,
         delete_task,
+        delete_task_by_id,
     )
 
     text_stripped = text.strip()
@@ -241,8 +242,14 @@ async def _handle_confirmation(
             count = await complete_all_tasks(user_id)
             bot_response = f"סיימתי! סימנתי {count} משימות כבוצעו ✅" if count > 0 else "אין משימות פתוחות."
         elif action_name == "delete":
-            result = await delete_task(user_id, action_data["title"])
-            bot_response = f"נמחק: {result['title']} 🗑" if result else f"לא מצאתי את \"{action_data['title']}\"."
+            task_id = action_data.get("id")
+            if task_id:
+                result = await delete_task_by_id(task_id)
+                title = action_data.get("title", "")
+                bot_response = f"נמחק: {title} 🗑" if result else f"לא מצאתי את \"{title}\"."
+            else:
+                result = await delete_task(user_id, action_data["title"])
+                bot_response = f"נמחק: {result['title']} 🗑" if result else f"לא מצאתי את \"{action_data['title']}\"."
         elif action_name == "create_task":
             task = await create_task(user_id, action_data)
             bot_response = f"נוסף: {task['title']}" if task else "משהו השתבש בשמירת המשימה."
@@ -439,8 +446,15 @@ async def _handle_task_action(text: str, intent, user_id: int, edit_status) -> s
         return f"עומד לסמן {count} משימות כבוצעו:\n{task_list}{extra}\n\nשלח 'כן' לאישור."
 
     if action == "delete":
-        save_confirmation(user_id, "delete", {"title": intent.task.title})
-        return f"עומד למחוק: \"{intent.task.title}\"\nשלח 'כן' לאישור."
+        existing = await get_pending_tasks(user_id, limit=50)
+        match = _match_task(existing, intent.task.title) if existing else None
+        if not match:
+            if existing:
+                task_list = "\n".join(f"{i + 1}. {t['title']}" for i, t in enumerate(existing))
+                return f"לא מצאתי \"{intent.task.title}\".\n\nהמשימות שלך:\n{task_list}"
+            return "אין משימות פתוחות."
+        save_confirmation(user_id, "delete", {"title": match["title"], "id": match["id"]})
+        return f"עומד למחוק: \"{match['title']}\"\nשלח 'כן' לאישור."
 
     if action == "schedule":
         existing = await get_pending_tasks(user_id, limit=50)

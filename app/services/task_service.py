@@ -235,6 +235,17 @@ async def complete_task(user_id: int, title_query: str) -> dict | None:
         return None
 
 
+async def delete_task_by_id(task_id) -> bool:
+    """Delete a task by its ID. Returns True if no exception was raised."""
+    try:
+        supabase.table("tasks").delete().eq("id", task_id).execute()
+        logger.info(f"Task deleted by id={task_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting task by id {task_id}: {e}")
+        return False
+
+
 async def delete_task(user_id: int, title_query: str) -> dict | None:
     """Find a pending task by title match and delete it."""
     try:
@@ -254,14 +265,9 @@ async def delete_task(user_id: int, title_query: str) -> dict | None:
             logger.info(f"No task matched '{title_query}' for delete")
             return None
 
-        # Delete and verify
-        del_resp = supabase.table("tasks").delete().eq("id", match["id"]).execute()
-        if del_resp.data:
-            logger.info(f"Task deleted: {match['title']} (id={match['id']})")
-            return match
-        else:
-            logger.error(f"Task delete returned no data for id={match['id']}")
-            return None
+        supabase.table("tasks").delete().eq("id", match["id"]).execute()
+        logger.info(f"Task deleted: {match['title']} (id={match['id']})")
+        return match
 
     except Exception as e:
         logger.error(f"Error deleting task: {e}")
