@@ -10,6 +10,7 @@ This module contains the core message processing pipeline:
 """
 
 import asyncio
+import html as _html
 import logging
 import time
 from datetime import datetime
@@ -30,6 +31,24 @@ _MODEL_DISPLAY = {
     "gemini-2.0-flash": "Gemini 2.0 Flash",
     "moonshotai/kimi-k2-instruct-0905": "Kimi K2",
 }
+
+
+# ---------------------------------------------------------------------------
+# Typing keep-alive — sends "typing" action every 4s until stopped
+# ---------------------------------------------------------------------------
+
+async def _typing_keepalive(chat_id: int, stop_event: asyncio.Event) -> None:
+    """Send typing indicator every 4s until stop_event is set."""
+    try:
+        while not stop_event.is_set():
+            await bot.send_chat_action(chat_id=chat_id, action="typing")
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=4)
+                break  # event was set
+            except asyncio.TimeoutError:
+                pass  # loop and send again
+    except Exception:
+        pass  # never crash — typing is cosmetic
 
 
 # ---------------------------------------------------------------------------
@@ -161,19 +180,28 @@ async def transcribe_voice(file_id: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 async def _edit_status(chat_id: int, message_id: int, text: str) -> None:
-    """Edit the status message, appending which LLM model was used."""
+    """Edit the status message with HTML formatting, appending which LLM model was used."""
     try:
         from app.core.llm import last_model_used
         model = last_model_used.get("")
         if model:
             short = _MODEL_DISPLAY.get(model, model)
-            text += f"\n\n({short})"
+            text += f"\n\n<i>({short})</i>"
     except Exception:
         pass
     try:
-        await bot.edit_message_text(text=text, chat_id=chat_id, message_id=message_id)
+        await bot.edit_message_text(
+            text=text, chat_id=chat_id, message_id=message_id,
+            parse_mode="HTML",
+        )
     except Exception as e:
-        logger.error(f"Failed to edit message: {e}")
+        # Fallback: try without parse_mode in case HTML is malformed
+        try:
+            import re
+            plain = re.sub(r'<[^>]+>', '', text)
+            await bot.edit_message_text(text=plain, chat_id=chat_id, message_id=message_id)
+        except Exception:
+            logger.error(f"Failed to edit message: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +338,7 @@ async def _handle_confirmation(
         combined = f"תזכיר לי {title} {text_stripped}"
         intent = await route_intent(combined, user_id=user_id)
 
+        safe_title = _html.escape(title)
         if intent.classification.action_type == "task" and intent.task:
             start_dt = _parse_task_datetime(intent.task.due_date, intent.task.time)
             if start_dt:
@@ -319,7 +348,7 @@ async def _handle_confirmation(
                     end_dt = start_dt + timedelta(minutes=30)
                     link = await google_svc.create_calendar_event(title, start_dt, end_dt=end_dt)
                     bot_response = (
-                        f"נקבע: {title}\n📅 {start_dt.strftime('%d/%m %H:%M')}\n{link}"
+                        f"<b>נקבע: {safe_title}</b>\n📅 {start_dt.strftime('%d/%m %H:%M')}\n<a href=\"{link}\">📅 לפתוח ביומן</a>"
                         if link else "לא הצלחתי ליצור אירוע ביומן."
                     )
                 else:
@@ -327,7 +356,7 @@ async def _handle_confirmation(
             else:
                 # Still no time — ask again
                 save_confirmation(user_id, "task_needs_time", {"title": title})
-                bot_response = f"לא הבנתי את הזמן. מתי לקבוע את \"{title}\"? (למשל: מחר ב-10, היום ב-14:00)"
+                bot_response = f"לא הבנתי את הזמן. מתי לקבוע את <b>{safe_title}</b>? (למשל: מחר ב-10, היום ב-14:00)"
         else:
             # Router didn't parse as task — try raw datetime parse
             start_dt = _parse_task_datetime(text_stripped, None)
@@ -338,14 +367,14 @@ async def _handle_confirmation(
                     end_dt = start_dt + timedelta(minutes=30)
                     link = await google_svc.create_calendar_event(title, start_dt, end_dt=end_dt)
                     bot_response = (
-                        f"נקבע: {title}\n📅 {start_dt.strftime('%d/%m %H:%M')}\n{link}"
+                        f"<b>נקבע: {safe_title}</b>\n📅 {start_dt.strftime('%d/%m %H:%M')}\n<a href=\"{link}\">📅 לפתוח ביומן</a>"
                         if link else "לא הצלחתי ליצור אירוע ביומן."
                     )
                 else:
                     bot_response = "שגיאה בחיבור ל-Google."
             else:
                 save_confirmation(user_id, "task_needs_time", {"title": title})
-                bot_response = f"לא הבנתי את הזמן. מתי לקבוע את \"{title}\"? (למשל: מחר ב-10, היום ב-14:00)"
+                bot_response = f"לא הבנתי את הזמן. מתי לקבוע את <b>{safe_title}</b>? (למשל: מחר ב-10, היום ב-14:00)"
     elif text_norm in _YES or first_word in _YES:
         bot_response = "בוצע."
     else:
@@ -519,7 +548,7 @@ def _parse_task_datetime(due_date_str: str | None, time_str: str | None) -> date
     now = datetime.now(TZ)
     today = now.date()
 
-    from datetime import time as _time, timedelta
+    from datetime import timedelta
 
     target_date = None
     parsed_time = None
@@ -579,7 +608,7 @@ async def _handle_task_action(text: str, intent, user_id: int, edit_status) -> s
     if not start_dt:
         # No time specified — ask the user
         save_confirmation(user_id, "task_needs_time", {"title": title})
-        return f"מתי לקבוע את \"{title}\"?"
+        return f"מתי לקבוע את <b>{_html.escape(title)}</b>?"
 
     # Create 30-min calendar event
     from datetime import timedelta
@@ -587,7 +616,8 @@ async def _handle_task_action(text: str, intent, user_id: int, edit_status) -> s
     link = await google.create_calendar_event(title, start_dt, end_dt=end_dt)
 
     if link:
-        return f"נקבע: {title}\n📅 {start_dt.strftime('%d/%m %H:%M')}\n{link}"
+        safe_title = _html.escape(title)
+        return f"<b>נקבע: {safe_title}</b>\n📅 {start_dt.strftime('%d/%m %H:%M')}\n<a href=\"{link}\">📅 לפתוח ביומן</a>"
     return "לא הצלחתי ליצור אירוע ביומן."
 
 
@@ -637,8 +667,13 @@ async def _handle_calendar_action(intent, user_id: int) -> str:
                 duration_str = f" ({mins // 60}h{remainder})"
             else:
                 duration_str = f" ({mins}m)"
-        loc_str = f"\n📍 {event_data.location}" if event_data.location else ""
-        return f"נקבע: {event_data.summary}\n{start_dt.strftime('%d/%m %H:%M')}{duration_str}{loc_str}\n{link}"
+        safe_summary = _html.escape(event_data.summary)
+        loc_str = f"\n📍 {_html.escape(event_data.location)}" if event_data.location else ""
+        return (
+            f"<b>נקבע: {safe_summary}</b>\n"
+            f"📅 {start_dt.strftime('%d/%m %H:%M')}{duration_str}{loc_str}\n"
+            f"<a href=\"{link}\">📅 לפתוח ביומן</a>"
+        )
     return "לא הצלחתי ליצור אירוע ביומן."
 
 
@@ -809,7 +844,6 @@ async def process_update(update_data: dict) -> None:
             logger.warning(f"Unauthorized user {user_id}")
             return
 
-        await bot.send_chat_action(chat_id=chat_id, action="typing")
         status = await bot.send_message(chat_id=chat_id, text="\u23f3")
         status_msg_id = status.message_id
 
@@ -822,8 +856,6 @@ async def process_update(update_data: dict) -> None:
             from app.services.memory_service import get_relevant_insights
             from app.services.router_service import route_intent
             from app.services.url_service import extract_urls
-
-            await bot.send_chat_action(chat_id=chat_id, action="typing")
 
             # Confirmation check (pending confirmations expire via TTL)
             if await _handle_confirmation(text, user_id, update_id, edit_status):
@@ -861,10 +893,33 @@ async def process_update(update_data: dict) -> None:
                 logger.error(f"Memory fetch failed: {memory_result}")
                 memory_result = ""
 
+            # Progressive status: show what we're doing
+            action_type = intent_result.classification.action_type
+            if action_type == "query":
+                try:
+                    await bot.edit_message_text(
+                        text="📡 אוסף מידע...",
+                        chat_id=chat_id, message_id=status_msg_id,
+                    )
+                except Exception:
+                    pass
+            elif action_type in ("task", "calendar"):
+                try:
+                    await bot.edit_message_text(
+                        text="🔍 מנתח...",
+                        chat_id=chat_id, message_id=status_msg_id,
+                    )
+                except Exception:
+                    pass
+
             await _dispatch_intent(
                 text, intent_result, memory_result,
                 user_id, update_id, edit_status,
             )
+
+        # Start typing keep-alive
+        stop_typing = asyncio.Event()
+        typing_task = asyncio.create_task(_typing_keepalive(chat_id, stop_typing))
 
         try:
             await asyncio.wait_for(_process_core(), timeout=55)
@@ -877,6 +932,9 @@ async def process_update(update_data: dict) -> None:
                 )
             except Exception:
                 pass
+        finally:
+            stop_typing.set()
+            typing_task.cancel()
 
     except Exception as e:
         logger.error(f"Process error: {e}")

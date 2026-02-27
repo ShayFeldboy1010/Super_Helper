@@ -40,21 +40,42 @@ class _CompatResponse:
     choices: list[_Choice] = field(default_factory=lambda: [_Choice()])
 
 
-def _strip_markdown(text: str) -> str:
-    """Remove markdown formatting that breaks Telegram plain text."""
-    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)  # **bold**
-    text = re.sub(r'\*(.+?)\*', r'\1', text)       # *italic*
-    text = re.sub(r'__(.+?)__', r'\1', text)       # __underline__
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)  # # headers
-    text = re.sub(r'```[\s\S]*?```', '', text)     # ```code blocks```
-    text = re.sub(r'`(.+?)`', r'\1', text)         # `inline code`
-    text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)  # [links](url)
-    text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)  # > blockquotes
+def _md_to_telegram_html(text: str) -> str:
+    """Convert LLM markdown output to Telegram-safe HTML.
+
+    1. HTML-escape raw text first
+    2. Convert supported markdown → Telegram HTML tags
+    3. Strip unsupported patterns (code blocks, blockquotes)
+    """
+    import html as _html
+
+    # Step 1: HTML-escape everything (prevents <script> etc.)
+    text = _html.escape(text)
+
+    # Step 2: Strip unsupported patterns
+    text = re.sub(r'```[\s\S]*?```', '', text)                  # ```code blocks```
+    text = re.sub(r'^&gt;\s?', '', text, flags=re.MULTILINE)    # > blockquotes (already escaped to &gt;)
+
+    # Step 3: Convert markdown → HTML (order matters: bold before italic)
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)         # **bold**
+    text = re.sub(r'\*(.+?)\*', r'<i>\1</i>', text)             # *italic*
+    text = re.sub(r'__(.+?)__', r'<u>\1</u>', text)             # __underline__
+    text = re.sub(r'^#{1,6}\s+(.+)$', r'<b>\1</b>', text, flags=re.MULTILINE)  # # headers
+    text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)         # `inline code`
+    text = re.sub(r'\[(.+?)\]\((.+?)\)', r'<a href="\2">\1</a>', text)  # [text](url)
+
     return text.strip()
 
 
 def _wrap_gemini_response(response) -> _CompatResponse:
-    text = _strip_markdown(response.text or "")
+    text = _md_to_telegram_html(response.text or "")
+    return _CompatResponse(choices=[_Choice(message=_Message(content=text))])
+
+
+def _wrap_groq_response(response) -> _CompatResponse:
+    """Clean Groq response through the same markdown→HTML pipeline."""
+    raw = response.choices[0].message.content if response.choices else ""
+    text = _md_to_telegram_html(raw)
     return _CompatResponse(choices=[_Choice(message=_Message(content=text))])
 
 
@@ -138,7 +159,7 @@ async def _groq_call(
                 _groq_client.chat.completions.create(**call_kwargs),
                 timeout=timeout,
             )
-            return result
+            return _wrap_groq_response(result)
         except Exception as e:
             if attempt == 0:
                 logger.warning(f"Groq emergency attempt 1 failed ({e}), retrying in 1s...")

@@ -1,4 +1,5 @@
 import asyncio
+import html as _html
 import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -63,8 +64,8 @@ async def _check_email_alerts_igpt(user_id: int) -> int | None:
     if any(phrase in lower for phrase in no_urgent_phrases):
         return 0
 
-    msg = f"📧 Email Alert (iGPT)\n\n{answer}"
-    await bot.send_message(chat_id=user_id, text=msg)
+    msg = f"📧 <b>Email Alert</b> <i>(iGPT)</i>\n\n{_html.escape(answer)}"
+    await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
     return 1
 
 
@@ -111,12 +112,12 @@ async def _check_email_alerts_gmail(user_id: int) -> int:
 
         if reason:
             msg = (
-                f"📧 Email Alert ({reason})\n"
-                f"From: {email.get('from', '?')}\n"
-                f"Subject: {email.get('subject', '?')}\n"
-                f"{email.get('snippet', '')[:150]}"
+                f"📧 <b>Email Alert</b> ({_html.escape(reason)})\n"
+                f"From: {_html.escape(email.get('from', '?'))}\n"
+                f"Subject: {_html.escape(email.get('subject', '?'))}\n"
+                f"{_html.escape(email.get('snippet', '')[:150])}"
             )
-            await bot.send_message(chat_id=user_id, text=msg)
+            await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
             count += 1
 
     return count
@@ -178,14 +179,14 @@ async def _check_stock_alerts(user_id: int) -> int:
                 pct = item.get("change_pct", 0)
                 if abs(pct) >= threshold:
                     arrow = "🟢📈" if pct >= 0 else "🔴📉"
-                    movers.append(f"{arrow} {item['name']}: {item.get('price', 0):,.2f} ({pct:+.1f}%)")
+                    movers.append(f"{arrow} <b>{_html.escape(item['name'])}</b>: {item.get('price', 0):,.2f} ({pct:+.1f}%)")
                     alerted_symbols.append(symbol)
 
         if not movers:
             return 0
 
-        msg = "📊 התראת שוק — תזוזות גדולות היום:\n" + "\n".join(movers)
-        await bot.send_message(chat_id=user_id, text=msg)
+        msg = "📊 <b>התראת שוק</b> — תזוזות גדולות היום:\n" + "\n".join(movers)
+        await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
 
         # Persist alerted symbols so they won't repeat for 24h
         try:
@@ -251,12 +252,12 @@ async def _check_weather_alert(user_id: int) -> int:
 
         if max_prob >= 60:
             msg = (
-                f"🌧 התראת מזג אוויר — צפוי גשם!\n"
+                f"🌧 <b>התראת מזג אוויר</b> — צפוי גשם!\n"
                 f"סיכוי למשקעים: עד {max_prob}%\n"
                 f"שעות צפויות: {', '.join(rain_hours[:4])}\n"
                 f"קח מטריה ☂️"
             )
-            await bot.send_message(chat_id=user_id, text=msg)
+            await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
             cache_set(f"weather_alert:{today_str}", True, 86400)
             return 1
 
@@ -298,11 +299,11 @@ async def _check_followup_reminders(user_id: int) -> int:
             if fu.get("due_at"):
                 due_str = f"\nהיה אמור להיות ב: {fu['due_at'][:10]}"
             msg = (
-                f"🔄 תזכורת המשך:\n"
-                f"{fu['commitment']}{due_str}\n\n"
+                f"🔄 <b>תזכורת המשך:</b>\n"
+                f"{_html.escape(fu['commitment'])}{due_str}\n\n"
                 f"עדיין על הצלחת — תטפל או תגיד לי לוותר"
             )
-            await bot.send_message(chat_id=user_id, text=msg)
+            await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
 
             # Update reminded count
             supabase.table("follow_ups").update({
@@ -361,7 +362,7 @@ async def meeting_prep():
 
         for msg in messages:
             try:
-                await bot.send_message(chat_id=user_id, text=msg)
+                await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
             except Exception as e:
                 logger.error(f"Failed to send meeting prep: {e}")
 
@@ -382,7 +383,7 @@ async def daily_brief():
 
         # Split if exceeds Telegram 4096 char limit
         if len(msg) <= 4096:
-            await bot.send_message(chat_id=user_id, text=msg)
+            await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
         else:
             # Send in chunks at line breaks
             chunks = []
@@ -397,7 +398,7 @@ async def daily_brief():
                 chunks.append(current)
 
             for chunk in chunks:
-                await bot.send_message(chat_id=user_id, text=chunk)
+                await bot.send_message(chat_id=user_id, text=chunk, parse_mode="HTML")
 
         return {"status": "ok", "message": "Enhanced briefing sent"}
 
@@ -408,13 +409,13 @@ async def daily_brief():
 
         google = GoogleService(user_id)
         calendar_lines = await google.get_todays_events()
-        calendar_str = "\n".join(calendar_lines)
+        calendar_str = _html.escape("\n".join(calendar_lines))
 
         msg = (
-            f"בריפינג בוקר\n\n"
+            f"<b>בריפינג בוקר</b>\n\n"
             f"📅 יומן:\n{calendar_str}"
         )
-        await bot.send_message(chat_id=user_id, text=msg)
+        await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
         return {"status": "ok", "message": "Basic briefing sent (fallback)"}
 
 
@@ -438,7 +439,7 @@ async def heartbeat():
         if not msg:
             return {"status": "ok", "message": "Nothing to report"}
 
-        await bot.send_message(chat_id=user_id, text=msg)
+        await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
 
         return {"status": "ok", "message": "Heartbeat sent"}
 
@@ -459,7 +460,7 @@ async def weekly_review():
         if not msg:
             return {"status": "ok", "message": "No review generated"}
 
-        await bot.send_message(chat_id=user_id, text=msg)
+        await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
 
         return {"status": "ok", "message": "Weekly review sent"}
 
@@ -480,7 +481,7 @@ async def self_improve():
         if msg:
             # Split if exceeds Telegram 4096 char limit
             if len(msg) <= 4096:
-                await bot.send_message(chat_id=user_id, text=msg)
+                await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
             else:
                 chunks = []
                 current = ""
@@ -493,7 +494,7 @@ async def self_improve():
                 if current:
                     chunks.append(current)
                 for chunk in chunks:
-                    await bot.send_message(chat_id=user_id, text=chunk)
+                    await bot.send_message(chat_id=user_id, text=chunk, parse_mode="HTML")
 
         return {
             "status": "ok",
@@ -519,7 +520,7 @@ async def check_code_tasks():
 
         for task in tasks:
             msg = format_task_status_message(task)
-            await bot.send_message(chat_id=user_id, text=msg)
+            await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
 
         return {"status": "ok", "notified": len(tasks)}
 
@@ -550,13 +551,13 @@ async def daily_reflection():
     if result["new_insights"] > 0 or result["reinforced_insights"] > 0 or followup_count > 0:
         try:
             msg = (
-                f"🧠 סיכום רפלקציה יומית\n"
+                f"🧠 <b>סיכום רפלקציה יומית</b>\n"
                 f"אינטראקציות שנותחו: {result['interactions_analyzed']}\n"
                 f"תובנות חדשות: {result['new_insights']}\n"
                 f"תובנות שהתחזקו: {result['reinforced_insights']}\n"
                 f"פעולות המשך: {followup_count}"
             )
-            await bot.send_message(chat_id=user_id, text=msg)
+            await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Failed to send reflection summary: {e}")
 
