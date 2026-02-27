@@ -39,41 +39,24 @@ class TestActionClassification:
 
 
 class TestTaskPayload:
-    def test_create_action_defaults(self):
+    def test_defaults(self):
         task = TaskPayload(title="Buy milk")
-        assert task.action == "create"
-        assert task.priority == 0
-        assert task.effort is None
+        assert task.title == "Buy milk"
+        assert task.due_date is None
+        assert task.time is None
 
-    def test_complete_action(self):
-        task = TaskPayload(action="complete", title="Shopping")
-        assert task.action == "complete"
+    def test_empty_title_default(self):
+        task = TaskPayload()
+        assert task.title == ""
 
-    def test_edit_with_new_fields(self):
+    def test_with_due_date_and_time(self):
         task = TaskPayload(
-            action="edit",
-            title="Old title",
-            new_title="New title",
-            new_due_date="2026-03-01 09:00:00",
+            title="Meeting",
+            due_date="2026-03-01",
+            time="14:00",
         )
-        assert task.new_title == "New title"
-
-    def test_recurring_task(self):
-        task = TaskPayload(
-            title="Exercise",
-            recurrence="daily",
-            effort="1h",
-        )
-        assert task.recurrence == "daily"
-        assert task.effort == "1h"
-
-    def test_invalid_effort_raises(self):
-        with pytest.raises(ValidationError):
-            TaskPayload(title="Test", effort="3h")
-
-    def test_invalid_recurrence_raises(self):
-        with pytest.raises(ValidationError):
-            TaskPayload(title="Test", recurrence="yearly")
+        assert task.due_date == "2026-03-01"
+        assert task.time == "14:00"
 
 
 class TestCalendarPayload:
@@ -103,7 +86,7 @@ class TestQueryPayload:
     def test_multi_context(self):
         q = QueryPayload(
             query="Show me everything",
-            context_needed=["calendar", "tasks", "email"],
+            context_needed=["calendar", "email", "web"],
         )
         assert len(q.context_needed) == 3
 

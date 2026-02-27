@@ -1,33 +1,38 @@
 """Tests for the LLM wrapper — fallback chain and response formatting."""
 
-from app.core.llm import _Choice, _CompatResponse, _convert_messages, _Message, _strip_markdown
+from app.core.llm import _Choice, _CompatResponse, _convert_messages, _md_to_telegram_html, _Message
 
 
-class TestStripMarkdown:
-    def test_removes_bold(self):
-        assert _strip_markdown("**hello**") == "hello"
+class TestMdToTelegramHtml:
+    def test_converts_bold(self):
+        assert _md_to_telegram_html("**hello**") == "<b>hello</b>"
 
-    def test_removes_italic(self):
-        assert _strip_markdown("*hello*") == "hello"
+    def test_converts_italic(self):
+        assert _md_to_telegram_html("*hello*") == "<i>hello</i>"
 
-    def test_removes_headers(self):
-        assert _strip_markdown("## Title\nContent") == "Title\nContent"
+    def test_converts_headers(self):
+        assert _md_to_telegram_html("## Title\nContent") == "<b>Title</b>\nContent"
 
-    def test_removes_code_blocks(self):
-        assert _strip_markdown("before```python\ncode```after") == "beforeafter"
+    def test_strips_code_blocks(self):
+        assert _md_to_telegram_html("before```python\ncode```after") == "beforeafter"
 
-    def test_removes_inline_code(self):
-        assert _strip_markdown("use `pip install`") == "use pip install"
+    def test_converts_inline_code(self):
+        assert _md_to_telegram_html("use `pip install`") == "use <code>pip install</code>"
 
-    def test_removes_links(self):
-        assert _strip_markdown("[click here](https://example.com)") == "click here"
+    def test_converts_links(self):
+        assert _md_to_telegram_html("[click here](https://example.com)") == '<a href="https://example.com">click here</a>'
 
-    def test_removes_blockquotes(self):
-        assert _strip_markdown("> quote\nnormal") == "quote\nnormal"
+    def test_strips_blockquotes(self):
+        assert _md_to_telegram_html("> quote\nnormal") == "quote\nnormal"
 
     def test_plain_text_unchanged(self):
         text = "Just a normal sentence with NVDA $190.50"
-        assert _strip_markdown(text) == text
+        assert _md_to_telegram_html(text) == text
+
+    def test_html_escapes_dangerous_input(self):
+        result = _md_to_telegram_html("<script>alert(1)</script>")
+        assert "<script>" not in result
+        assert "&lt;script&gt;" in result
 
 
 class TestConvertMessages:
