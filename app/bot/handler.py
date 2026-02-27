@@ -40,18 +40,25 @@ def save_confirmation(user_id: int, action_name: str, action_data: dict) -> None
     """Persist a pending confirmation so the user can reply asynchronously."""
     try:
         action_data = {**action_data, "_ts": time.time()}
-        supabase.table("pending_confirmations").upsert({
+        row = {
             "user_id": user_id,
             "action_name": action_name,
             "action_data": action_data,
             "created_at": datetime.now(TZ).isoformat(),
-        }, on_conflict="user_id").execute()
+        }
+        # Delete-then-insert is more reliable than upsert (avoids silent failure
+        # if user_id lacks a UNIQUE constraint for on_conflict)
+        supabase.table("pending_confirmations").delete().eq("user_id", user_id).execute()
+        resp = supabase.table("pending_confirmations").insert(row).execute()
+        logger.info(f"Confirmation saved: action={action_name}, user={user_id}, rows={len(resp.data or [])}")
     except Exception as e:
-        logger.warning(f"Failed to save confirmation to DB: {e}")
+        logger.error(f"Failed to save confirmation to DB: {e}", exc_info=True)
 
 
 def get_confirmation(user_id: int) -> tuple[str, dict] | None:
     """Retrieve and consume a pending confirmation (returns None if expired)."""
+    import json
+
     try:
         resp = (
             supabase.table("pending_confirmations")
@@ -61,11 +68,25 @@ def get_confirmation(user_id: int) -> tuple[str, dict] | None:
             .execute()
         )
         if not resp.data:
+            logger.info(f"No pending confirmation for user={user_id}")
             return None
         row = resp.data[0]
         action_data = row["action_data"]
+
+        # Defensive: Supabase may return JSONB as a string
+        if isinstance(action_data, str):
+            try:
+                action_data = json.loads(action_data)
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(f"action_data is unparseable string: {action_data[:100]}")
+                action_data = {}
+
+        if not isinstance(action_data, dict):
+            logger.warning(f"action_data unexpected type: {type(action_data)}")
+            action_data = {}
+
         # Prefer embedded Unix timestamp (timezone-safe) over created_at
-        ts = action_data.get("_ts") if isinstance(action_data, dict) else None
+        ts = action_data.get("_ts")
         if ts:
             age = time.time() - ts
         else:
@@ -73,13 +94,17 @@ def get_confirmation(user_id: int) -> tuple[str, dict] | None:
             if created.tzinfo is None:
                 created = created.replace(tzinfo=ZoneInfo("UTC"))
             age = (datetime.now(ZoneInfo("UTC")) - created).total_seconds()
+
+        logger.info(f"Confirmation found: action={row['action_name']}, age={age:.0f}s, user={user_id}")
+
         if age > _CONFIRM_TTL:
             supabase.table("pending_confirmations").delete().eq("user_id", user_id).execute()
+            logger.info(f"Confirmation expired (age={age:.0f}s > TTL={_CONFIRM_TTL}s)")
             return None
         supabase.table("pending_confirmations").delete().eq("user_id", user_id).execute()
         return (row["action_name"], action_data)
     except Exception as e:
-        logger.warning(f"Failed to get confirmation from DB: {e}")
+        logger.error(f"Failed to get confirmation from DB: {e}", exc_info=True)
         return None
 
 

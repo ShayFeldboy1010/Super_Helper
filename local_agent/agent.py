@@ -10,7 +10,6 @@ Requires: SUPABASE_URL, SUPABASE_KEY, PROJECT_DIR in .env (or env vars).
 
 import os
 import subprocess
-import sys
 import time
 from datetime import datetime, timezone
 
@@ -110,8 +109,8 @@ def execute_claude(instruction: str) -> tuple[bool, str]:
         return False, str(e)
 
 
-def git_commit_and_push(title: str) -> str | None:
-    """Stage, commit, and push changes. Returns commit hash or None."""
+def git_commit_and_push(title: str) -> tuple[str | None, bool]:
+    """Stage, commit, and push changes. Returns (commit_hash, pushed)."""
     try:
         # Check for changes
         status = subprocess.run(
@@ -120,7 +119,7 @@ def git_commit_and_push(title: str) -> str | None:
         )
         if not status.stdout.strip():
             log("No git changes to commit")
-            return None
+            return None, False
 
         # Stage all changes
         subprocess.run(["git", "add", "-A"], cwd=PROJECT_DIR, check=True)
@@ -141,40 +140,132 @@ def git_commit_and_push(title: str) -> str | None:
         log(f"Committed: {commit_hash[:8]}")
 
         # Push
+        pushed = False
         if AUTO_PUSH:
-            subprocess.run(["git", "push"], cwd=PROJECT_DIR, check=True)
-            log("Pushed to remote")
+            try:
+                subprocess.run(["git", "push"], cwd=PROJECT_DIR, check=True)
+                log("Pushed to remote")
+                pushed = True
+            except subprocess.CalledProcessError as e:
+                log(f"Push failed: {e}")
 
-        return commit_hash
+        return commit_hash, pushed
 
     except subprocess.CalledProcessError as e:
         log(f"Git error: {e}")
-        return None
+        return None, False
 
 
-def notify_telegram(success: bool, task_id: str, output: str, commit_hash: str | None) -> None:
-    """Send a Telegram message directly via Bot API — instant notification."""
+def send_telegram(text: str) -> None:
+    """Send a Telegram message directly via Bot API."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         log("Telegram notification skipped (no token/chat_id)")
         return
-
     try:
-        if success:
-            emoji = "✅"
-            summary = output.strip().split("\n")[-1][:200] if output else "Done"
-            commit_str = f"\nCommit: {commit_hash[:8]}" if commit_hash else ""
-            text = f"{emoji} Code task completed!\n{summary}{commit_str}"
-        else:
-            emoji = "❌"
-            last_lines = "\n".join(output.strip().split("\n")[-3:])[:300] if output else "Unknown error"
-            text = f"{emoji} Code task failed\nTask: {task_id[:8]}...\n{last_lines}"
-
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        data = urllib.parse.urlencode({"chat_id": TELEGRAM_CHAT_ID, "text": text}).encode()
+        data = urllib.parse.urlencode({
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": text[:4096],
+            "parse_mode": "HTML",
+        }).encode()
         urllib.request.urlopen(url, data, timeout=10)
-        log("Telegram notification sent")
     except Exception as e:
-        log(f"Telegram notification failed: {e}")
+        log(f"Telegram send failed: {e}")
+
+
+def _format_duration(seconds: float) -> str:
+    """Format seconds into a human-readable duration string."""
+    m, s = divmod(int(seconds), 60)
+    if m > 0:
+        return f"{m}m {s:02d}s"
+    return f"{s}s"
+
+
+def _extract_instruction_title(instruction: str) -> str:
+    """Get a meaningful first line from the instruction, skipping template boilerplate."""
+    for line in instruction.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        # Skip common template prefixes
+        if line.startswith(("Implement the following", "Context:", "Key directories:", "Rules:")):
+            continue
+        # Use Title/Description lines from proposals
+        if line.startswith("Title: "):
+            return line[7:][:100]
+        if line.startswith("Description: "):
+            return line[13:][:100]
+        # For manual "code X" instructions, use the first meaningful line
+        if line.startswith("New instruction from user: "):
+            return line[27:][:100]
+        # Skip previous-task context block
+        if line.startswith("=== Previous code task ===") or line.startswith("=== End previous task ==="):
+            continue
+        if line.startswith(("Instruction:", "Status:", "Output:")):
+            continue
+        return line[:100]
+    return instruction[:100]
+
+
+def get_git_diff_stat() -> str | None:
+    """Get diff stat for the last commit (files changed, insertions, deletions)."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--stat", "HEAD~1", "HEAD"],
+            cwd=PROJECT_DIR, capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception as e:
+        log(f"git diff stat failed: {e}")
+    return None
+
+
+def notify_telegram(
+    success: bool, task_id: str, output: str, commit_hash: str | None,
+    instruction: str = "", started_at: float | None = None, pushed: bool = False,
+) -> None:
+    """Send a rich Telegram notification about task completion."""
+    title = _extract_instruction_title(instruction) if instruction else "Code task"
+    duration = _format_duration(time.time() - started_at) if started_at else ""
+
+    if success:
+        dur_str = f" ({duration})" if duration else ""
+        lines = [f"✅ Code task done!{dur_str}"]
+        lines.append(f"📝 {title}")
+
+        # Diff stat
+        diff_stat = get_git_diff_stat() if commit_hash else None
+        if diff_stat:
+            # Extract the summary line (e.g. "3 files changed, 45 insertions(+), 12 deletions(-)")
+            stat_lines = diff_stat.split("\n")
+            # Show file list (skip summary line which is last)
+            if len(stat_lines) > 1:
+                file_lines = "\n".join(f"  {l.strip()}" for l in stat_lines[:-1] if l.strip())
+                summary_line = stat_lines[-1].strip()
+                lines.append(f"📁 {summary_line}")
+                lines.append(file_lines)
+            else:
+                lines.append(f"📁 {stat_lines[0].strip()}")
+
+        if commit_hash:
+            lines.append(f"🔗 Commit: {commit_hash[:8]}")
+        if pushed:
+            lines.append("🚀 Pushed to remote")
+        elif commit_hash:
+            lines.append("⚠️ Committed locally (push failed)")
+
+        send_telegram("\n".join(lines))
+    else:
+        dur_str = f" ({duration})" if duration else ""
+        lines = [f"❌ Code task failed{dur_str}"]
+        lines.append(f"📝 {title}")
+        if output:
+            last_lines = "\n".join(output.strip().split("\n")[-5:])[:500]
+            lines.append(f"\nError:\n{last_lines}")
+        else:
+            lines.append("\nUnknown error")
+        send_telegram("\n".join(lines))
 
 
 def log_to_interaction_log(instruction: str, output: str, success: bool) -> None:
@@ -212,7 +303,7 @@ def complete_task(task_id: str, success: bool, output: str, commit_hash: str | N
 
 
 def process_task(task: dict) -> None:
-    """Full lifecycle: claim -> execute -> commit -> complete."""
+    """Full lifecycle: claim -> execute -> commit -> notify -> complete."""
     task_id = task["id"]
     instruction = task["instruction"]
     log(f"Processing task {task_id[:8]}...")
@@ -220,15 +311,25 @@ def process_task(task: dict) -> None:
     if not claim_task(task_id):
         return
 
+    started_at = time.time()
+
+    # --- Progress notification: task claimed ---
+    title = _extract_instruction_title(instruction)
+    send_telegram(f"🔄 Agent picked up task...\n📝 {title}\nTask: {task_id[:8]}")
+
     success, output = execute_claude(instruction)
 
     commit_hash = None
+    pushed = False
     if success and AUTO_COMMIT:
-        title = instruction.split("\n")[0][:60]
-        commit_hash = git_commit_and_push(title)
+        commit_title = instruction.split("\n")[0][:60]
+        commit_hash, pushed = git_commit_and_push(commit_title)
 
     complete_task(task_id, success, output, commit_hash)
-    notify_telegram(success, task_id, output, commit_hash)
+    notify_telegram(
+        success, task_id, output, commit_hash,
+        instruction=instruction, started_at=started_at, pushed=pushed,
+    )
     log_to_interaction_log(instruction, output, success)
 
 

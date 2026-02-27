@@ -208,6 +208,56 @@ async def reject_proposal(user_id: int, proposal_index: int) -> bool:
         return False
 
 
+def _extract_instruction_title(instruction: str) -> str:
+    """Get a meaningful first line from the instruction, skipping template boilerplate."""
+    for line in instruction.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith(("Implement the following", "Context:", "Key directories:", "Rules:")):
+            continue
+        if line.startswith("Title: "):
+            return line[7:][:100]
+        if line.startswith("Description: "):
+            return line[13:][:100]
+        if line.startswith("New instruction from user: "):
+            return line[27:][:100]
+        if line.startswith("=== Previous code task ===") or line.startswith("=== End previous task ==="):
+            continue
+        if line.startswith(("Instruction:", "Status:", "Output:")):
+            continue
+        return line[:100]
+    return instruction[:100]
+
+
+def _format_task_duration(task: dict) -> str:
+    """Compute a human-readable duration or elapsed time for a task."""
+    started = task.get("started_at")
+    completed = task.get("completed_at")
+    if not started:
+        return ""
+    try:
+        start_dt = datetime.fromisoformat(started)
+        if completed:
+            end_dt = datetime.fromisoformat(completed)
+            delta = end_dt - start_dt
+        else:
+            # In-progress: elapsed since started
+            end_dt = datetime.now(TZ)
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=ZoneInfo("UTC"))
+            delta = end_dt - start_dt
+        total_secs = int(delta.total_seconds())
+        if total_secs < 0:
+            return ""
+        m, s = divmod(total_secs, 60)
+        if m > 0:
+            return f"{m}m {s:02d}s"
+        return f"{s}s"
+    except Exception:
+        return ""
+
+
 def format_task_status_message(task: dict) -> str:
     """Format a code task into a Hebrew status message."""
     status_emoji = {
@@ -216,18 +266,28 @@ def format_task_status_message(task: dict) -> str:
         "completed": "✅",
         "failed": "❌",
     }
-    emoji = status_emoji.get(task.get("status", ""), "❓")
-    lines = [f"{emoji} Code Task: {task['id'][:8]}..."]
-    lines.append(f"Status: {task['status']}")
+    status = task.get("status", "")
+    emoji = status_emoji.get(status, "❓")
 
-    if task.get("result_summary"):
-        lines.append(f"Summary: {task['result_summary'][:200]}")
+    # Meaningful title from instruction
+    instruction = task.get("instruction") or ""
+    title = _extract_instruction_title(instruction)
+
+    duration = _format_task_duration(task)
+    dur_str = f" ({duration})" if duration else ""
+
+    lines = [f"{emoji} {title}"]
+    lines.append(f"Status: {status}{dur_str}")
+
     if task.get("git_commit_hash"):
-        lines.append(f"Commit: {task['git_commit_hash'][:8]}")
-    if task.get("instruction"):
-        # Show first line of instruction
-        first_line = task["instruction"].split("\n")[0][:100]
-        lines.append(f"Task: {first_line}")
+        lines.append(f"🔗 Commit: {task['git_commit_hash'][:8]}")
+    if task.get("result_summary") and status in ("completed", "failed"):
+        # Show a short excerpt of the result
+        summary = task["result_summary"][:200].strip()
+        if summary:
+            lines.append(f"Result: {summary}")
+
+    lines.append(f"ID: {task['id'][:8]}")
 
     return "\n".join(lines)
 
@@ -239,9 +299,16 @@ def format_recent_tasks_message(tasks: list[dict]) -> str:
 
     lines = ["📋 משימות קוד אחרונות:\n"]
     for task in tasks:
-        emoji = {"pending": "⏳", "in_progress": "🔄", "completed": "✅", "failed": "❌"}.get(task.get("status", ""), "❓")
-        first_line = (task.get("instruction") or "").split("\n")[0][:60]
+        status = task.get("status", "")
+        emoji = {"pending": "⏳", "in_progress": "🔄", "completed": "✅", "failed": "❌"}.get(status, "❓")
+
+        instruction = task.get("instruction") or ""
+        title = _extract_instruction_title(instruction)[:60]
+
+        duration = _format_task_duration(task)
+        dur_str = f" ({duration})" if duration else ""
+
         commit = f" | {task['git_commit_hash'][:8]}" if task.get("git_commit_hash") else ""
-        lines.append(f"{emoji} {task['id'][:8]}... {first_line}{commit}")
+        lines.append(f"{emoji} {title}{dur_str}{commit}")
 
     return "\n".join(lines)
