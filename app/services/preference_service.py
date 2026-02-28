@@ -195,7 +195,6 @@ def detect_satisfaction(message: str) -> str | None:
     Returns 'positive', 'negative', or None.
     """
     message_lower = message.lower().strip()
-    words = set(message_lower.split())
 
     # Check for positive signals
     for positive in POSITIVE_WORDS:

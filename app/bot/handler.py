@@ -264,8 +264,12 @@ async def _edit_status(chat_id: int, message_id: int, text: str) -> None:
 # Stock alert preference handling
 # ---------------------------------------------------------------------------
 
-_ALERT_DISABLE_KEYWORDS = {"תפסיק התראות", "בלי מניות", "stop alerts", "disable stock", "תפסיק מניות", "בטל התראות מניות"}
-_ALERT_ENABLE_KEYWORDS = {"תחזיר התראות", "enable alerts", "חדש מניות", "הפעל התראות מניות", "תפעיל מניות"}
+_ALERT_DISABLE_KEYWORDS = {
+    "תפסיק התראות", "בלי מניות", "stop alerts", "disable stock", "תפסיק מניות", "בטל התראות מניות",
+}
+_ALERT_ENABLE_KEYWORDS = {
+    "תחזיר התראות", "enable alerts", "חדש מניות", "הפעל התראות מניות", "תפעיל מניות",
+}
 
 # Preference command patterns
 _PREF_CONCISE = {"תשובות קצרות", "קצר", "תמציתי", "concise", "short answers", "be brief"}
