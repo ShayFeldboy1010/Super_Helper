@@ -12,6 +12,7 @@ from app.services.google_svc import GoogleService
 from app.services.market_service import extract_tickers_from_query, fetch_market_data, fetch_symbols
 from app.services.memory_service import get_relevant_insights
 from app.services.news_service import fetch_ai_news
+from app.services.preference_service import get_enhanced_context
 from app.services.search_service import format_search_results, web_search
 from app.services.synergy_service import generate_synergy_insights
 
@@ -223,6 +224,14 @@ class QueryService:
         full_context = "\n\n".join(context_data) if context_data else ""
 
         system_prompt = CHIEF_OF_STAFF_IDENTITY
+
+        # Inject enhanced context (preferences + patterns)
+        try:
+            enhanced_ctx = await get_enhanced_context(self.user_id, "query")
+            if enhanced_ctx:
+                system_prompt += "\n\n" + enhanced_ctx
+        except Exception as e:
+            logger.warning(f"Failed to get enhanced context: {e}")
 
         if recent_convo:
             system_prompt += (

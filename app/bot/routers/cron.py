@@ -563,3 +563,25 @@ async def daily_reflection():
             logger.error(f"Failed to send reflection summary: {e}")
 
     return {"status": "ok", **result, "follow_ups_extracted": followup_count}
+
+
+@router.get("/learn-preferences", dependencies=[Depends(verify_cron_secret)])
+async def learn_preferences():
+    """Weekly preference learning — analyze patterns and update user preferences."""
+    user_id = settings.TELEGRAM_USER_ID
+
+    try:
+        from app.services.preference_service import infer_and_update_preferences
+        changes = await infer_and_update_preferences(user_id)
+
+        # Send summary if preferences were updated
+        if changes.get("updated"):
+            updates_str = "\n".join(f"- {u}" for u in changes["updated"])
+            msg = f"🧠 <b>למידת העדפות</b>\n\nעדכונים:\n{updates_str}"
+            await bot.send_message(chat_id=user_id, text=msg, parse_mode="HTML")
+
+        return {"status": "ok", **changes}
+
+    except Exception as e:
+        logger.error(f"Preference learning failed: {e}")
+        return {"status": "error", "message": str(e)}

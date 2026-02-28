@@ -27,6 +27,7 @@ async def log_interaction(
     action_type: str,
     intent_summary: str = None,
     telegram_update_id: int = None,
+    response_length: int = None,
 ):
     """Insert into interaction_log. Errors are swallowed — never blocks the user."""
     try:
@@ -39,6 +40,8 @@ async def log_interaction(
         }
         if telegram_update_id:
             payload["telegram_update_id"] = telegram_update_id
+        if response_length is not None:
+            payload["response_length"] = response_length
         supabase.table("interaction_log").insert(payload).execute()
     except Exception as e:
         logger.error(f"Failed to log interaction: {e}")

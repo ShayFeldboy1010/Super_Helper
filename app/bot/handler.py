@@ -7,6 +7,7 @@ This module contains the core message processing pipeline:
 4. URL interception and summarization
 5. Intent classification via LLM router
 6. Action dispatch (task, calendar, note, query, chat)
+7. Satisfaction detection (implicit learning)
 """
 
 import asyncio
@@ -19,11 +20,50 @@ from zoneinfo import ZoneInfo
 from app.bot.loader import bot
 from app.core.config import settings
 from app.core.database import supabase
+from app.services.preference_service import (
+    detect_satisfaction,
+    is_followup_question,
+    update_interaction_satisfaction,
+)
 
 logger = logging.getLogger(__name__)
 
 TZ = ZoneInfo("Asia/Jerusalem")
 _CONFIRM_TTL = 600  # seconds (10 minutes)
+
+# Cache for last interaction (for satisfaction detection)
+_last_interaction: dict[int, dict] = {}  # user_id -> {id, bot_response}
+
+
+def _cache_last_interaction(user_id: int, interaction_id: int, bot_response: str) -> None:
+    """Cache the last interaction for satisfaction detection."""
+    _last_interaction[user_id] = {"id": interaction_id, "bot_response": bot_response}
+
+
+async def _get_last_interaction_id(user_id: int) -> tuple[int | None, str | None]:
+    """Get the last interaction ID and response for this user."""
+    # Try cache first
+    cached = _last_interaction.get(user_id)
+    if cached:
+        return cached["id"], cached["bot_response"]
+
+    # Fall back to DB query
+    try:
+        resp = (
+            supabase.table("interaction_log")
+            .select("id, bot_response")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if resp.data:
+            return resp.data[0]["id"], resp.data[0]["bot_response"]
+    except Exception as e:
+        logger.warning(f"Failed to get last interaction: {e}")
+
+    return None, None
+
 
 _MODEL_DISPLAY = {
     "gemini-3-flash-preview": "Gemini 3 Flash",
@@ -226,6 +266,73 @@ async def _edit_status(chat_id: int, message_id: int, text: str) -> None:
 
 _ALERT_DISABLE_KEYWORDS = {"תפסיק התראות", "בלי מניות", "stop alerts", "disable stock", "תפסיק מניות", "בטל התראות מניות"}
 _ALERT_ENABLE_KEYWORDS = {"תחזיר התראות", "enable alerts", "חדש מניות", "הפעל התראות מניות", "תפעיל מניות"}
+
+# Preference command patterns
+_PREF_CONCISE = {"תשובות קצרות", "קצר", "תמציתי", "concise", "short answers", "be brief"}
+_PREF_DETAILED = {"תשובות מפורטות", "מפורט", "יותר פרטים", "detailed", "more detail", "elaborate"}
+_PREF_SHOW = {"הראה העדפות", "מה ההעדפות", "show preferences", "my preferences", "העדפות שלי"}
+
+
+async def _handle_preference_commands(
+    text: str, user_id: int, update_id: int | None, edit_status,
+) -> bool:
+    """Handle explicit preference commands. Returns True if handled."""
+    from app.models.preference_models import PreferenceUpdate
+    from app.services.memory_service import log_interaction
+    from app.services.preference_service import get_preferences, update_preferences
+
+    text_lower = text.strip().lower()
+
+    # Show current preferences
+    if any(kw in text_lower for kw in _PREF_SHOW):
+        prefs = await get_preferences(user_id)
+        style_he = "קצר" if prefs.response_style == "concise" else "מפורט"
+        interests_str = ", ".join(prefs.interests) if prefs.interests else "לא נקבעו"
+        morning_str = "בוקר" if prefs.morning_person else "ערב" if prefs.morning_person is False else "לא נקבע"
+
+        bot_response = (
+            f"⚙️ <b>ההעדפות שלך:</b>\n"
+            f"• סגנון תשובות: {style_he}\n"
+            f"• שעות שקטות: {prefs.quiet_hours_start}:00 - {prefs.quiet_hours_end}:00\n"
+            f"• התראות מניות: {'פעיל' if prefs.stock_alerts_enabled else 'כבוי'}\n"
+            f"• בריף בוקר: {'פעיל' if prefs.daily_brief_enabled else 'כבוי'}\n"
+            f"• תחומי עניין: {interests_str}\n"
+            f"• סגנון: {morning_str}\n"
+            f"\n💡 אמור 'תשובות קצרות' או 'תשובות מפורטות' לשינוי"
+        )
+        await edit_status(bot_response)
+        await log_interaction(
+            user_id=user_id, user_message=text, bot_response=bot_response,
+            action_type="system", intent_summary="Show preferences",
+            telegram_update_id=update_id,
+        )
+        return True
+
+    # Set concise style
+    if any(kw in text_lower for kw in _PREF_CONCISE):
+        await update_preferences(user_id, PreferenceUpdate(response_style="concise"))
+        bot_response = "✅ סגנון תשובות: קצר ותמציתי"
+        await edit_status(bot_response)
+        await log_interaction(
+            user_id=user_id, user_message=text, bot_response=bot_response,
+            action_type="system", intent_summary="Set concise style",
+            telegram_update_id=update_id,
+        )
+        return True
+
+    # Set detailed style
+    if any(kw in text_lower for kw in _PREF_DETAILED):
+        await update_preferences(user_id, PreferenceUpdate(response_style="detailed"))
+        bot_response = "✅ סגנון תשובות: מפורט ומעמיק"
+        await edit_status(bot_response)
+        await log_interaction(
+            user_id=user_id, user_message=text, bot_response=bot_response,
+            action_type="system", intent_summary="Set detailed style",
+            telegram_update_id=update_id,
+        )
+        return True
+
+    return False
 
 
 async def _handle_alert_preference(
@@ -460,6 +567,17 @@ async def _dispatch_intent(
     action_type = intent.classification.action_type
     bot_response = None
 
+    # --- Satisfaction detection (update previous interaction) ---
+    try:
+        prev_id, prev_response = await _get_last_interaction_id(user_id)
+        if prev_id:
+            satisfaction = detect_satisfaction(text)
+            had_followup = is_followup_question(prev_response or "", text) if prev_response else False
+            if satisfaction or had_followup:
+                await update_interaction_satisfaction(prev_id, satisfaction, had_followup)
+    except Exception as e:
+        logger.warning(f"Satisfaction detection failed: {e}")
+
     # --- Ambiguous input ---
     if intent.classification.confidence < 0.55 and action_type not in ("chat",):
         suggestions = []
@@ -548,7 +666,22 @@ async def _dispatch_intent(
             user_id=user_id, user_message=text, bot_response=bot_response,
             action_type=action_type, intent_summary=intent.classification.summary,
             telegram_update_id=update_id,
+            response_length=len(bot_response),
         )
+        # Cache for next satisfaction detection
+        try:
+            resp = (
+                supabase.table("interaction_log")
+                .select("id")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if resp.data:
+                _cache_last_interaction(user_id, resp.data[0]["id"], bot_response)
+        except Exception:
+            pass
 
 
 def _parse_task_datetime(due_date_str: str | None, time_str: str | None) -> datetime | None:
@@ -875,6 +1008,10 @@ async def process_update(update_data: dict) -> None:
 
             # Confirmation check (pending confirmations expire via TTL)
             if await _handle_confirmation(text, user_id, update_id, edit_status):
+                return
+
+            # --- Preference commands interception ---
+            if await _handle_preference_commands(text, user_id, update_id, edit_status):
                 return
 
             # --- Alert preference interception ---
